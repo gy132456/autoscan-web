@@ -171,7 +171,7 @@ var API = 'https://script.google.com/macros/s/AKfycbzZmE_KpivdEsheJdkr7BxWnKPZsa
 var PARAMS = new URLSearchParams(location.hash.slice(1));
 var KEY = PARAMS.get('k') || '';
 var TEST = PARAMS.get('test') === '1';   // 시험용: 카메라 대신 test.jpg
-var PARALLEL = 3, LONG_SIDE = 2400, QUALITY = 0.92;
+var PARALLEL = 6, LONG_SIDE = 2400, QUALITY = 0.85;
 
 function $(id) { return document.getElementById(id); }
 function pad(n) { return (n < 10 ? '0' : '') + n; }
@@ -404,9 +404,16 @@ function flatten(img) {
 /** 캔버스 → 문서 네 모서리 (0~1 비율, [좌상,우상,우하,좌하]) 또는 null */
 function detectQuad(canvas) {
   if (!cvReady) return null;
-  var src = cv.imread(canvas), q = null;
+  // 큰 사진을 통째로 읽지 않고 640 으로 줄인 뒤 찾음 (어차피 findDoc 안에서 640 으로 줄임 → 결과 같고 훨씬 빠름)
+  var s = Math.min(1, 640 / Math.max(canvas.width, canvas.height));
+  var sm = canvas;
+  if (s < 1) {
+    sm = document.createElement('canvas'); sm.width = Math.round(canvas.width * s); sm.height = Math.round(canvas.height * s);
+    var g = sm.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(canvas, 0, 0, sm.width, sm.height);
+  }
+  var src = cv.imread(sm), q = null;
   try { q = findDoc(src); } catch (e) { console.error(e); } finally { src.delete(); }
-  return q ? q.map(function (p) { return { x: p.x / canvas.width, y: p.y / canvas.height }; }) : null;
+  return q ? q.map(function (p) { return { x: p.x / sm.width, y: p.y / sm.height }; }) : null;
 }
 
 /** 선명하게 자동 보정 (그 자리에서 고침): 언샤프 마스크로 글자 윤곽을 또렷하게 + 종이는 하얗게, 글자는 조금 더 진하게.
@@ -889,7 +896,7 @@ function enqueue(list) {
   if (!batch) batch = { n: 0, ok: 0, bad: 0 };
   list.forEach(function (it) { it.status = 'queued'; it.note = ''; it.want = true; it.fatal = false; dbPut(it); });
   batch.n += list.length; holdWake('send');
-  var m = $('msg'); m.className = 'msg'; m.textContent = '보내는 중… (' + batch.n + '장, 3장씩 동시에)';
+  var m = $('msg'); m.className = 'msg'; m.textContent = '보내는 중… (' + batch.n + '장, ' + PARALLEL + '장씩 동시에)';
   render(); pump();
 }
 function pump() {
