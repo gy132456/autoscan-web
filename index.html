@@ -119,6 +119,7 @@
   </div>
   <div id="bar">
     <button id="auto">자동: 켬</button>
+    <button id="torch" hidden>플래시</button>
     <button id="shutter" aria-label="찍기"></button>
     <button id="done">완료</button>
   </div>
@@ -488,8 +489,8 @@ function openCamera() {
     stream = s; video.srcObject = s;
     return video.play();
   }).then(function () {
-    var tr = stream.getVideoTracks()[0];
-    try { tr.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch (e) {}
+    setupTrack(stream.getVideoTracks()[0]);
+    holdWake('cam');
     loop();
   }).catch(function (e) {
     diag = '카메라를 열 수 없습니다: ' + (e && e.name ? e.name : e);
@@ -500,6 +501,7 @@ function openCamera() {
 
 function closeCamera() {
   clearTimeout(timer); timer = null;
+  dropWake('cam'); stillCap = null; camTrack = null; torchOn = false; $('torch').hidden = true;
   if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
   stream = null; video.srcObject = null;
   $('cam').hidden = true; $('home').hidden = false;
@@ -527,7 +529,7 @@ function analyze(now) {
   try { q = findDoc(src); } finally { src.delete(); }
   var took = Math.round(performance.now() - t0);
   var norm = q ? q.map(function (p) { return { x: p.x / d.w, y: p.y / d.h }; }) : null;
-  diag = norm ? '테두리 찾음 (' + took + 'ms)' : '테두리 못 찾음 (' + took + 'ms)';
+  diag = (norm ? '테두리 찾음 (' + took + 'ms)' : '테두리 못 찾음 (' + took + 'ms)') + ' · 영상 ' + vw + 'x' + vh + (lastStill ? ' · 사진 ' + lastStill : '');
   lastQuad = norm;
   var shoot = autoOn && busy < 4 && shot.onFrame(norm, now);
   var steady = autoOn && shot.state === 'HOLDING' && !!norm;
@@ -559,9 +561,9 @@ function takeShot() {
   shots++; busy++; showCount(); shutterFx();
   $('flash').style.opacity = '0.7'; setTimeout(function () { $('flash').style.opacity = '0'; }, 120);
   var takenAt = Date.now();
-  // 화면이 멈추지 않게 잠깐 뒤에 처리
+  // 화면이 멈추지 않게 잠깐 뒤에 처리. 사진 기능(아이폰 iOS 18.4~)이 되면 영상 대신 고화질 사진을 씀
   setTimeout(function () {
-    processShot(c).then(function (r) {
+    grabStill(c).then(processShot).then(function (r) {
       var it = addItem(r, takenAt);
       $('last').src = it.url; $('last').hidden = false;
       if (setting('instant')) enqueue([it]);
@@ -597,6 +599,66 @@ function testStream() {
     img.onerror = bad; img.src = 'test.jpg';
   });
 }
+
+// ------------------------------------------------------------------ 카메라 부가 기능 (되는 폰에서만)
+var stillCap = null, stillBusy = false, lastStill = '', torchOn = false, camTrack = null;
+function setupTrack(tr) {
+  camTrack = tr; lastStill = '';
+  var caps = {};
+  try { caps = tr.getCapabilities ? tr.getCapabilities() : {}; } catch (e) {}
+  $('torch').hidden = !caps.torch; $('torch').textContent = '플래시';
+  // 고화질 사진 촬영 (아이폰 iOS 18.4~, 안드로이드 크롬). 안 되면 지금처럼 영상 화면을 씀
+  try { stillCap = (!TEST && window.ImageCapture) ? new ImageCapture(tr) : null; } catch (e) { stillCap = null; }
+  tr.addEventListener('ended', function () { diag = '카메라가 끊겼습니다. ‘완료’ 후 다시 시작해 주세요'; showHint(); });
+}
+function withTimeout(p, ms) {
+  return new Promise(function (ok, bad) {
+    var t = setTimeout(function () { bad(new Error('timeout')); }, ms);
+    p.then(function (v) { clearTimeout(t); ok(v); }, function (e) { clearTimeout(t); bad(e); });
+  });
+}
+/** 고화질 사진을 찍어 캔버스로 (긴 변 LONG_SIDE). 안 되면 영상에서 딴 캔버스(fallback) 그대로 */
+function grabStill(fallback) {
+  if (!stillCap || stillBusy || !camTrack || camTrack.readyState !== 'live') return Promise.resolve(fallback);
+  stillBusy = true;
+  return withTimeout(stillCap.takePhoto(), 4000).then(function (blob) {
+    return blobToCanvas(blob).then(function (c) {
+      lastStill = c.width + 'x' + c.height;
+      var d = fit(c.width, c.height, LONG_SIDE);
+      if (d.w === c.width) return c;
+      var o = document.createElement('canvas'); o.width = d.w; o.height = d.h;
+      var g = o.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(c, 0, 0, d.w, d.h);
+      return o;
+    });
+  }).catch(function (e) {
+    console.warn('takePhoto 실패, 영상 화면 사용', e);
+    lastStill = '안 됨(영상 사용)';
+    return fallback;
+  }).finally(function () { stillBusy = false; });
+}
+$('torch').onclick = function () {
+  if (!camTrack) return;
+  var want = !torchOn;
+  camTrack.applyConstraints({ advanced: [{ torch: want }] })
+    .then(function () { torchOn = want; }, function () { torchOn = false; })
+    .then(function () { $('torch').textContent = torchOn ? '플래시 끔' : '플래시'; });
+};
+
+// 화면 꺼짐 방지: 촬영 중·보내는 중에는 화면이 저절로 꺼지지 않게 (아이폰 Safari 16.4~, 홈 화면 앱 18.4~)
+var wakeWhy = {}, wakeLock = null;
+function holdWake(why) { wakeWhy[why] = true; requestWake(); }
+function dropWake(why) {
+  delete wakeWhy[why];
+  if (!Object.keys(wakeWhy).length && wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
+}
+function requestWake() {
+  if (wakeLock || document.hidden || !navigator.wakeLock || !Object.keys(wakeWhy).length) return;
+  navigator.wakeLock.request('screen').then(function (l) {
+    if (!Object.keys(wakeWhy).length) { l.release(); return; }
+    wakeLock = l; l.addEventListener('release', function () { if (wakeLock === l) wakeLock = null; });
+  }).catch(function () {});
+}
+document.addEventListener('visibilitychange', function () { if (!document.hidden) requestWake(); });
 
 // 셔터 소리 + 진동 (아이폰은 무음 스위치를 켜면 소리 안 남)
 var actx = null;
@@ -733,8 +795,12 @@ function render() {
 // ------------------------------------------------------------------ 보내기 (3장씩 동시에, 실패하면 인터넷이 돌아올 때 자동으로 다시)
 function post(obj) {
   // text/plain 으로 보내야 브라우저가 사전 확인(CORS) 없이 보냄
-  return fetch(API, { method: 'POST', body: JSON.stringify(obj), headers: { 'Content-Type': 'text/plain;charset=utf-8' } })
-    .then(function (r) { return r.json(); });
+  // 2분 넘게 답이 없으면 실패로 보고 나중에 다시 (파일 이름이 같아 서버에 두 번 들어가지 않음)
+  var ctl = window.AbortController ? new AbortController() : null;
+  var t = ctl ? setTimeout(function () { ctl.abort(); }, 120000) : 0;
+  return fetch(API, { method: 'POST', body: JSON.stringify(obj), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, signal: ctl ? ctl.signal : undefined })
+    .then(function (r) { return r.json(); })
+    .finally(function () { clearTimeout(t); });
 }
 function b64(blob) {
   return new Promise(function (ok, bad) {
@@ -753,7 +819,7 @@ function enqueue(list) {
   if (!list.length) return;
   if (!batch) batch = { n: 0, ok: 0, bad: 0 };
   list.forEach(function (it) { it.status = 'queued'; it.note = ''; it.want = true; it.fatal = false; dbPut(it); });
-  batch.n += list.length;
+  batch.n += list.length; holdWake('send');
   var m = $('msg'); m.className = 'msg'; m.textContent = '보내는 중… (' + batch.n + '장, 3장씩 동시에)';
   render(); pump();
 }
@@ -781,6 +847,7 @@ function sendOne(it) {
     .then(render);
 }
 function finishBatch() {
+  dropWake('send');
   var b = batch; batch = null; if (!b) return;
   var m = $('msg');
   if (b.bad) { m.className = 'msg bad'; m.textContent = b.ok + '장 보냄, ' + b.bad + '장 실패. 인터넷이 되면 자동으로 다시 보냅니다(이 화면을 열어 두세요).'; }
