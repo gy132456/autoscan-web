@@ -152,7 +152,7 @@ var API = 'https://script.google.com/macros/s/AKfycbzZmE_KpivdEsheJdkr7BxWnKPZsa
 var PARAMS = new URLSearchParams(location.hash.slice(1));
 var KEY = PARAMS.get('k') || '';
 var TEST = PARAMS.get('test') === '1';   // 시험용: 카메라 대신 test.jpg
-var PARALLEL = 3, LONG_SIDE = 2400, QUALITY = 0.92;
+var PARALLEL = 3, LONG_SIDE = 3200, QUALITY = 0.92;
 
 function $(id) { return document.getElementById(id); }
 function pad(n) { return (n < 10 ? '0' : '') + n; }
@@ -483,7 +483,7 @@ function openCamera() {
   shots = 0; shot = new AutoShot(); lastQuad = null; showCount(); showHint();
   var p = TEST ? testStream() : navigator.mediaDevices.getUserMedia({
     audio: false,
-    video: { facingMode: { ideal: 'environment' }, width: { ideal: 3840 }, height: { ideal: 2880 } }
+    video: { facingMode: { ideal: 'environment' }, width: { ideal: 4032 }, height: { ideal: 3024 } }
   });
   p.then(function (s) {
     stream = s; video.srcObject = s;
@@ -610,6 +610,24 @@ function setupTrack(tr) {
   // 고화질 사진 촬영 (아이폰 iOS 18.4~, 안드로이드 크롬). 안 되면 지금처럼 영상 화면을 씀
   try { stillCap = (!TEST && window.ImageCapture) ? new ImageCapture(tr) : null; } catch (e) { stillCap = null; }
   tr.addEventListener('ended', function () { diag = '카메라가 끊겼습니다. ‘완료’ 후 다시 시작해 주세요'; showHint(); });
+  if (!TEST) boostResolution(tr, caps);
+}
+/** 영상 해상도를 되는 데까지 올림 (아이폰은 처음에 1920 정도로 주는 경우가 있음). 안 되는 크기는 그냥 건너뜀 */
+function boostResolution(tr, caps) {
+  var s = {}; try { s = tr.getSettings(); } catch (e) {}
+  var cur = (s.width || 0) * (s.height || 0);
+  var maxW = caps.width && caps.width.max, maxH = caps.height && caps.height.max;
+  var list = [[4032, 3024], [3840, 2160], [3264, 2448], [2592, 1944], [1920, 1440]], tries = [];
+  list.forEach(function (d) { tries.push(d); tries.push([d[1], d[0]]); });   // 세로 화면이면 가로·세로가 바뀌어 있음
+  return tries.reduce(function (p, d) {
+    return p.then(function (done) {
+      if (done || camTrack !== tr) return true;
+      if (d[0] * d[1] <= cur) return true;                                   // 이미 이만큼 이상
+      if ((maxW && d[0] > maxW) || (maxH && d[1] > maxH)) return false;
+      return tr.applyConstraints({ width: { exact: d[0] }, height: { exact: d[1] } })
+        .then(function () { return true; }, function () { return false; });
+    });
+  }, Promise.resolve(false)).catch(function () {});
 }
 function withTimeout(p, ms) {
   return new Promise(function (ok, bad) {
