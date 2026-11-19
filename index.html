@@ -64,7 +64,7 @@
 
   <button id="start" class="pri">자동 스캔 시작</button>
   <label class="btn alt">앨범에서 고르기<input id="pick" type="file" accept="image/*" multiple></label>
-  <div id="cvstate">스캔 기능 준비 중… (처음 한 번은 10초쯤 걸릴 수 있습니다)</div>
+  <div id="cvstate">스캔 기능 준비 중… (먼저 ‘자동 스캔 시작’을 눌러도 됩니다)</div>
 
   <div id="grid" class="grid"></div>
   <button id="send" disabled>보낼 사진 없음</button>
@@ -120,18 +120,23 @@ var items = [], seq = 0, sending = false, cvReady = false;
 if (!KEY) { $('bad').hidden = false; $('start').disabled = true; }
 
 // ------------------------------------------------------------------ OpenCV 준비
-window.Module = { onRuntimeInitialized: function () { cvReady = true; $('cvstate').textContent = '스캔 기능 준비 완료'; } };
+var cvDone, cvWait = new Promise(function (r) { cvDone = r; });
+function setReady() { if (cvReady) return; cvReady = true; $('cvstate').textContent = '스캔 기능 준비 완료'; cvDone(); }
+window.Module = { onRuntimeInitialized: setReady };
 (function () {
+  // opencv.js(0.2MB) + opencv.wasm(7.6MB) 를 같은 곳에서 받음 → 받으면서 바로 준비(아이폰에서 훨씬 빠름)
+  var t0 = performance.now();
   var s = document.createElement('script');
-  s.src = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js';
+  s.src = 'opencv.js?v=4.10.0';
   s.async = true;
   s.onload = function () {
     // 이 빌드는 cv 가 Promise 인 경우가 있음
     if (window.cv && typeof window.cv.then === 'function') {
-      window.cv.then(function (m) { window.cv = m; cvReady = true; $('cvstate').textContent = '스캔 기능 준비 완료'; });
-    } else if (window.cv && window.cv.Mat) { cvReady = true; $('cvstate').textContent = '스캔 기능 준비 완료'; }
+      window.cv.then(function (m) { window.cv = m; setReady(); });
+    } else if (window.cv && window.cv.Mat) { setReady(); }
   };
-  s.onerror = function () { $('cvstate').textContent = '스캔 기능을 불러오지 못했습니다. 인터넷을 확인하고 새로고침해 주세요.'; };
+  s.onerror = function () { $('cvstate').textContent = '스캔 기능을 불러오지 못했습니다. 인터넷을 확인하고 새로고침해 주세요.'; cvDone(); };
+  cvWait.then(function () { window.cvLoadMs = Math.round(performance.now() - t0); });
   document.head.appendChild(s);
 })();
 
@@ -337,7 +342,7 @@ function flatten(img) {
 
 /** 캔버스(원본) → 펴고 그림자 지운 JPEG Blob. OpenCV 가 없으면 그대로 */
 function processCanvas(canvas) {
-  if (!cvReady) return toBlob(canvas);
+  if (!cvReady) return cvWait.then(function () { return cvReady ? processCanvas(canvas) : toBlob(canvas); });
   var src = null, img = null;
   try {
     src = cv.imread(canvas);
@@ -400,7 +405,6 @@ var video = $('video'), ov = $('ov');
 var small = document.createElement('canvas');
 
 function openCamera() {
-  if (!cvReady) { alert('스캔 기능을 아직 불러오는 중입니다. 잠시 뒤 다시 눌러 주세요.'); return; }
   $('cam').hidden = false; $('home').hidden = true;
   shots = 0; shot = new AutoShot(); lastQuad = null; showCount(); showHint();
   var p = TEST ? testStream() : navigator.mediaDevices.getUserMedia({
@@ -440,6 +444,7 @@ function loop() {
 function analyze(now) {
   var vw = video.videoWidth, vh = video.videoHeight;
   if (!vw || !vh) return;
+  if (!cvReady) { diag = '스캔 기능 불러오는 중… (셔터로는 지금도 찍을 수 있음)'; showHint(); return; }
   var d = fit(vw, vh, 640);
   small.width = d.w; small.height = d.h;
   var g = small.getContext('2d', { willReadFrequently: true });
