@@ -51,7 +51,8 @@
   #flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .15s; }
   #bar { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 16px calc(env(safe-area-inset-bottom) + 12px); background:#000; }
   #bar button { min-height:46px; background:#2a2f38; color:#fff; font-size:15px; flex:1; }
-  #shutter { flex:0 0 72px !important; width:72px; height:72px; min-height:72px !important; border-radius:50% !important; background:#fff !important; border:5px solid #9aa4b3 !important; }
+  #shutter { flex:0 0 92px !important; width:92px; height:92px; min-height:92px !important; padding:0; border-radius:50% !important; background:#fff !important; border:6px solid #9aa4b3 !important; box-shadow:inset 0 0 0 3px #fff; }
+  #shutter:active { transform:scale(.92); background:#dfe3ea !important; }
   #last { position:absolute; right:12px; bottom:12px; width:56px; height:74px; border-radius:8px; border:2px solid #fff; object-fit:cover; background:#222; }
   #count { position:absolute; left:12px; bottom:12px; color:#fff; background:rgba(0,0,0,.55); padding:4px 10px; border-radius:20px; font-weight:600; }
   .th img { cursor:pointer; }
@@ -61,6 +62,18 @@
   .full { position:fixed; inset:0; background:#000; z-index:20; display:flex; flex-direction:column; }
   .vstage { position:relative; flex:1; overflow:hidden; display:flex; align-items:center; justify-content:center; padding-top:env(safe-area-inset-top); }
   .vstage img { max-width:100%; max-height:100%; object-fit:contain; }
+  .vtop { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:calc(env(safe-area-inset-top) + 10px) 16px 8px; color:#fff; background:#000; font-weight:600; }
+  .vtop #vnote { color:#cfd6e0; font-size:13px; font-weight:500; text-align:right; }
+  .vwrap { position:relative; flex:1; min-height:0; }
+  .slides { position:absolute; inset:0; display:flex; overflow-x:auto; overflow-y:hidden; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+  .slides::-webkit-scrollbar { display:none; }
+  .slide { flex:0 0 100%; height:100%; scroll-snap-align:center; scroll-snap-stop:always; display:flex; align-items:center; justify-content:center; padding:6px; }
+  .slide img { max-width:100%; max-height:100%; object-fit:contain; background:#111; }
+  .nav { position:absolute; top:50%; transform:translateY(-50%); width:44px; height:64px; min-height:0; padding:0; border-radius:10px; background:rgba(0,0,0,.45); color:#fff; font-size:34px; font-weight:400; }
+  .nav.prev { left:6px; } .nav.next { right:6px; }
+  .nav:disabled { opacity:0; pointer-events:none; }
+  .vsendbar { padding-top:0; }
+  .vbar #vsend { background:var(--ok); min-height:54px; font-size:17px; }
   #acan { position:absolute; inset:0; width:100%; height:100%; touch-action:none; }
   .vnote { color:#cfd6e0; font-size:13px; padding:6px 16px 0; background:#000; text-align:center; min-height:4px; }
   .vbar { display:flex; gap:8px; padding:10px 12px calc(env(safe-area-inset-bottom) + 12px); background:#000; }
@@ -88,6 +101,7 @@
     <h2>설정</h2>
     <label><input type="checkbox" id="set_instant"> 찍자마자 바로 보내기</label>
     <label><input type="checkbox" id="set_sound"> 찍을 때 소리</label>
+    <label><input type="checkbox" id="set_enhance"> 선명하게 자동 보정 (글자 또렷하게, 종이 하얗게)</label>
   </div>
 
   <div class="card">
@@ -126,13 +140,18 @@
 </section>
 
 <section id="view" class="full" hidden>
-  <div class="vstage"><img id="vimg" alt="찍은 사진"></div>
-  <div id="vnote" class="vnote"></div>
+  <div class="vtop"><span id="vcount">1 / 1</span><span id="vnote"></span></div>
+  <div class="vwrap">
+    <div id="slides" class="slides"></div>
+    <button id="vprev" class="nav prev" aria-label="이전 사진">‹</button>
+    <button id="vnext" class="nav next" aria-label="다음 사진">›</button>
+  </div>
   <div class="vbar">
     <button id="vclose">닫기</button>
     <button id="vadj">모서리 조정</button>
     <button id="vdel" class="danger">이 사진 지우기</button>
   </div>
+  <div class="vbar vsendbar" id="vsendbar"><button id="vsend">보내기</button></div>
 </section>
 
 <section id="adj" class="full" hidden>
@@ -390,6 +409,23 @@ function detectQuad(canvas) {
   return q ? q.map(function (p) { return { x: p.x / canvas.width, y: p.y / canvas.height }; }) : null;
 }
 
+/** 선명하게 자동 보정 (그 자리에서 고침): 언샤프 마스크로 글자 윤곽을 또렷하게 + 종이는 하얗게, 글자는 조금 더 진하게.
+ *  손글씨가 깨지지 않도록 세기는 약하게. */
+var ENH_LUT = (function () {
+  var t = new Uint8Array(256);
+  for (var i = 0; i < 256; i++) t[i] = Math.round(255 * Math.pow(Math.min(1, i / 238), 1.3));
+  return t;
+})();
+function enhance(img) {
+  var blur = new cv.Mat();
+  cv.GaussianBlur(img, blur, new cv.Size(0, 0), 1.3);
+  cv.addWeighted(img, 1.7, blur, -0.7, 0, img);
+  blur.delete();
+  var d = img.data;
+  for (var i = 0; i < d.length; i++) d[i] = ENH_LUT[d[i]];
+  return img;
+}
+
 /** 캔버스(원본) + 모서리(비율, null 이면 펴지 않음) → 펴고 그림자 지운 JPEG Blob */
 function renderOut(canvas, q) {
   if (!cvReady) return toBlob(canvas);
@@ -403,6 +439,7 @@ function renderOut(canvas, q) {
       var w = warp(img, px); img.delete(); img = w;
     }
     var flat = flatten(img); img.delete(); img = null;
+    if (setting('enhance')) enhance(flat);
     var outC = document.createElement('canvas');
     cv.imshow(outC, flat); flat.delete();
     return toBlob(outC);
@@ -687,11 +724,25 @@ function shutterFx() {
   if (navigator.vibrate) try { navigator.vibrate(40); } catch (e) {}
   if (!actx || !setting('sound')) return;
   try {
-    var n = Math.round(actx.sampleRate * 0.07), b = actx.createBuffer(1, n, actx.sampleRate), d = b.getChannelData(0);
-    for (var i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 4);
-    var s = actx.createBufferSource(), g = actx.createGain(); s.buffer = b; g.gain.value = 0.6;
-    s.connect(g); g.connect(actx.destination); s.start();
+    var t0 = actx.currentTime + 0.005;
+    click(t0, 0.022, 4200, 0.9, 1.0);          // ‘찰’ - 날카로운 금속음
+    thump(t0, 0.06, 170, 60, 0.5);             // 몸통 울림
+    click(t0 + 0.085, 0.035, 2600, 1.1, 0.8);  // ‘칵’ - 셔터 닫힘
+    thump(t0 + 0.085, 0.05, 130, 55, 0.35);
   } catch (e) {}
+}
+function click(t, dur, freq, q, vol) {
+  var n = Math.round(actx.sampleRate * dur), b = actx.createBuffer(1, n, actx.sampleRate), d = b.getChannelData(0);
+  for (var i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 3);
+  var src = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
+  src.buffer = b; f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q; g.gain.value = vol * 2.2;
+  src.connect(f); f.connect(g); g.connect(actx.destination); src.start(t);
+}
+function thump(t, dur, f0, f1, vol) {
+  var o = actx.createOscillator(), g = actx.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + dur + 0.01);
 }
 
 $('start').onclick = function () { unlockAudio(); openCamera(); };
@@ -701,13 +752,13 @@ $('auto').onclick = function () { autoOn = !autoOn; shot.resetSteady(); showHint
 document.addEventListener('visibilitychange', function () { if (document.hidden && stream) closeCamera(); });
 
 // ------------------------------------------------------------------ 설정 (이 폰에만 저장)
-var DEFAULTS = { instant: false, sound: true };
+var DEFAULTS = { instant: false, sound: true, enhance: true };
 function setting(k) {
   try { var v = localStorage.getItem('as_' + k); if (v !== null) return v === '1'; } catch (e) {}
   return DEFAULTS[k];
 }
 function setSetting(k, on) { try { localStorage.setItem('as_' + k, on ? '1' : '0'); } catch (e) {} }
-['instant', 'sound'].forEach(function (k) {
+['instant', 'sound', 'enhance'].forEach(function (k) {
   var el = $('set_' + k); el.checked = setting(k);
   el.onchange = function () { setSetting(k, el.checked); if (k === 'sound' && el.checked) unlockAudio(); };
 });
@@ -790,7 +841,7 @@ function render() {
   items.forEach(function (it) {
     var d = document.createElement('div'); d.className = 'th';
     var img = document.createElement('img'); img.src = it.url; img.alt = ''; d.appendChild(img);
-    img.onclick = function () { openView(it); };
+    img.onclick = function () { openSlider(items.slice(), items.indexOf(it)); };
     if (!busyItem(it) && it.status !== 'ok') {
       var x = document.createElement('button'); x.className = 'x'; x.textContent = '×'; x.setAttribute('aria-label', '지우기');
       x.onclick = function () { removeItem(it); };
@@ -896,7 +947,11 @@ function loadRecent() {
   }).catch(function () { r.textContent = '불러오지 못했습니다.'; });
 }
 
-$('send').onclick = sendAll;
+// ‘모두 보내기’ → 먼저 미리보기에서 한 장씩 넘겨 보고 보내기
+$('send').onclick = function () {
+  var list = items.filter(sendable);
+  if (list.length) openSlider(list, 0);
+};
 $('clear').onclick = function () {
   if (!confirm('보내지 않은 사진을 모두 지울까요?')) return;
   items.filter(function (it) { return !busyItem(it); }).forEach(function (it) { URL.revokeObjectURL(it.url); dbDel(it.id); });
@@ -905,18 +960,79 @@ $('clear').onclick = function () {
 $('more').onclick = loadRecent;
 window.addEventListener('beforeunload', function (e) { if (isSending()) { e.preventDefault(); e.returnValue = ''; } });
 
-// ------------------------------------------------------------------ 크게 보기
-var viewIt = null;
-function openView(it) {
-  viewIt = it; $('vimg').src = it.url; $('view').hidden = false;
+// ------------------------------------------------------------------ 미리보기: 좌우로 넘기며 한 장씩 확인 → 보내기
+var sl = { list: [], idx: 0 };
+function sendable(it) { return it.status === 'wait' || it.status === 'bad'; }
+function openSlider(list, idx) {
+  sl.list = list; sl.idx = Math.max(0, Math.min(idx || 0, list.length - 1));
+  buildSlides(); $('view').hidden = false;
+  requestAnimationFrame(function () { goSlide(sl.idx, true); updateSlider(); });
+}
+function buildSlides() {
+  var box = $('slides'); box.innerHTML = '';
+  sl.list.forEach(function (it) {
+    var d = document.createElement('div'); d.className = 'slide';
+    var img = document.createElement('img'); img.src = it.url; img.alt = '찍은 사진'; img.dataset.id = it.id;
+    d.appendChild(img); box.appendChild(d);
+  });
+}
+function goSlide(i, instant) {
+  var box = $('slides'); i = Math.max(0, Math.min(i, sl.list.length - 1));
+  sl.idx = i;
+  if (instant) box.scrollLeft = i * box.clientWidth;
+  else box.scrollTo({ left: i * box.clientWidth, behavior: 'smooth' });
+  updateSlider();
+}
+function curIt() { return sl.list[sl.idx]; }
+// 손가락으로 넘긴 위치를 다시 읽음 (지우기·모서리 조정 직전)
+function syncIdx() {
+  var box = $('slides'), w = box.clientWidth;
+  if (w) { var i = Math.round(box.scrollLeft / w); if (i >= 0 && i < sl.list.length) sl.idx = i; }
+}
+function updateSlider() {
+  var it = curIt();
+  if (!it) { closeView(); return; }
+  $('vcount').textContent = (sl.idx + 1) + ' / ' + sl.list.length;
   var locked = busyItem(it) || it.status === 'ok';
   $('vadj').hidden = locked; $('vdel').hidden = locked;
-  $('vnote').textContent = it.status === 'ok' ? '보낸 사진입니다.' : busyItem(it) ? '보내는 중이라 고칠 수 없습니다.' : '';
+  $('vnote').textContent = it.status === 'ok' ? '보낸 사진' : busyItem(it) ? '보내는 중' : it.status === 'bad' ? '보내기 실패한 사진' : '좌우로 넘겨 확인';
+  $('vprev').disabled = sl.idx === 0; $('vnext').disabled = sl.idx >= sl.list.length - 1;
+  var n = sl.list.filter(sendable).length;
+  $('vsendbar').hidden = n === 0;
+  $('vsend').textContent = n + '장 모두 보내기';
 }
-function closeView() { $('view').hidden = true; viewIt = null; }
+function refreshSlide(it) {
+  var img = $('slides').querySelector('img[data-id="' + it.id + '"]');
+  if (img) img.src = it.url;
+  $('view').hidden = false; updateSlider();
+}
+function closeView() { $('view').hidden = true; $('slides').innerHTML = ''; sl.list = []; }
+$('slides').addEventListener('scroll', function () {
+  var box = $('slides'), w = box.clientWidth || 1, i = Math.round(box.scrollLeft / w);
+  if (i !== sl.idx && i >= 0 && i < sl.list.length) { sl.idx = i; updateSlider(); }
+}, { passive: true });
+window.addEventListener('resize', function () { if (!$('view').hidden) goSlide(sl.idx, true); });
+document.addEventListener('keydown', function (e) {
+  if ($('view').hidden || !$('adj').hidden) return;
+  if (e.key === 'ArrowLeft') goSlide(sl.idx - 1);
+  else if (e.key === 'ArrowRight') goSlide(sl.idx + 1);
+  else if (e.key === 'Escape') closeView();
+});
+$('vprev').onclick = function () { goSlide(sl.idx - 1); };
+$('vnext').onclick = function () { goSlide(sl.idx + 1); };
 $('vclose').onclick = closeView;
-$('vdel').onclick = function () { if (viewIt) removeItem(viewIt); closeView(); };
-$('vadj').onclick = function () { if (viewIt) openAdjust(viewIt); };
+$('vadj').onclick = function () { syncIdx(); var it = curIt(); if (it) openAdjust(it); };
+$('vdel').onclick = function () {
+  syncIdx(); var it = curIt(); if (!it) return;
+  removeItem(it);
+  sl.list.splice(sl.idx, 1);
+  if (!sl.list.length) { closeView(); return; }
+  buildSlides(); goSlide(Math.min(sl.idx, sl.list.length - 1), true);
+};
+$('vsend').onclick = function () {
+  var list = sl.list.filter(sendable);
+  closeView(); enqueue(list);
+};
 
 // ------------------------------------------------------------------ 모서리 조정 (흰 점 네 개를 끌어 맞추기)
 var FULL = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }];
@@ -1013,7 +1129,7 @@ $('aok').onclick = function () {
       URL.revokeObjectURL(it.url);
       it.blob = blob; it.quad = full ? null : q; it.url = URL.createObjectURL(blob);
       if (it.status === 'bad' && it.fatal) { it.status = 'wait'; it.note = ''; }
-      dbPut(it); render(); closeAdjust(); openView(it);
+      dbPut(it); render(); closeAdjust(); refreshSlide(it);
     }).finally(function () { $('aok').disabled = false; $('aok').textContent = '적용'; });
   }, 30);
 };
