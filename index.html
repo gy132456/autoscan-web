@@ -54,6 +54,19 @@
   #shutter { flex:0 0 72px !important; width:72px; height:72px; min-height:72px !important; border-radius:50% !important; background:#fff !important; border:5px solid #9aa4b3 !important; }
   #last { position:absolute; right:12px; bottom:12px; width:56px; height:74px; border-radius:8px; border:2px solid #fff; object-fit:cover; background:#222; }
   #count { position:absolute; left:12px; bottom:12px; color:#fff; background:rgba(0,0,0,.55); padding:4px 10px; border-radius:20px; font-weight:600; }
+  .th img { cursor:pointer; }
+  .set label { display:flex; align-items:center; gap:10px; min-height:40px; font-size:15px; }
+  .set input { width:22px; height:22px; accent-color:var(--pri); }
+  /* 크게 보기 · 모서리 조정 */
+  .full { position:fixed; inset:0; background:#000; z-index:20; display:flex; flex-direction:column; }
+  .vstage { position:relative; flex:1; overflow:hidden; display:flex; align-items:center; justify-content:center; padding-top:env(safe-area-inset-top); }
+  .vstage img { max-width:100%; max-height:100%; object-fit:contain; }
+  #acan { position:absolute; inset:0; width:100%; height:100%; touch-action:none; }
+  .vnote { color:#cfd6e0; font-size:13px; padding:6px 16px 0; background:#000; text-align:center; min-height:4px; }
+  .vbar { display:flex; gap:8px; padding:10px 12px calc(env(safe-area-inset-bottom) + 12px); background:#000; }
+  .vbar button { flex:1; min-height:48px; background:#2a2f38; color:#fff; font-size:15px; padding:0 6px; }
+  .vbar .danger { background:#5a2326; color:#ffd7d7; }
+  .vbar .okb { background:var(--pri); }
 </style>
 </head>
 <body>
@@ -71,12 +84,19 @@
   <button id="clear" hidden>모두 지우기</button>
   <div id="msg" class="msg"></div>
 
+  <div class="card set">
+    <h2>설정</h2>
+    <label><input type="checkbox" id="set_instant"> 찍자마자 바로 보내기</label>
+    <label><input type="checkbox" id="set_sound"> 찍을 때 소리</label>
+  </div>
+
   <div class="card">
     <h2>사용법</h2>
     <ul>
       <li>‘자동 스캔 시작’ → 문서를 비추면 파란 테두리가 잡히고, 초록으로 바뀌면 저절로 찍힙니다.</li>
       <li>다음 문서로 바꾸면 버튼 없이 또 찍힙니다. 다 찍으면 ‘완료’ → ‘모두 보내기’.</li>
-      <li>찍은 사진은 반듯하게 펴고 그림자를 지워서 보냅니다.</li>
+      <li>찍은 사진은 반듯하게 펴고 그림자를 지워서 보냅니다. 사진을 누르면 크게 보고, ‘모서리 조정’으로 고치거나 지울 수 있습니다.</li>
+      <li>보내지 않은 사진은 이 화면을 닫아도 남아 있습니다. 보내는 동안에는 화면을 켜 두세요.</li>
       <li>홈 화면에 추가해 두면 앱처럼 쓸 수 있습니다. (공유 버튼 → 홈 화면에 추가)</li>
     </ul>
   </div>
@@ -104,6 +124,27 @@
   </div>
 </section>
 
+<section id="view" class="full" hidden>
+  <div class="vstage"><img id="vimg" alt="찍은 사진"></div>
+  <div id="vnote" class="vnote"></div>
+  <div class="vbar">
+    <button id="vclose">닫기</button>
+    <button id="vadj">모서리 조정</button>
+    <button id="vdel" class="danger">이 사진 지우기</button>
+  </div>
+</section>
+
+<section id="adj" class="full" hidden>
+  <div class="vstage" id="astage"><canvas id="acan"></canvas></div>
+  <div class="vnote">흰 점을 문서 모서리로 끌어 맞추고 ‘적용’. ‘자동’은 다시 찾기, ‘전체’는 펴지 않고 사진 전체.</div>
+  <div class="vbar">
+    <button id="aauto">자동</button>
+    <button id="afull">전체</button>
+    <button id="acancel">취소</button>
+    <button id="aok" class="okb">적용</button>
+  </div>
+</section>
+
 <script>
 // ------------------------------------------------------------------ 설정
 var API = 'https://script.google.com/macros/s/AKfycbzZmE_KpivdEsheJdkr7BxWnKPZsaTU_bP67ynOlS2-is9DWQSYQnTP8-ne6TtHDu03/exec';
@@ -115,7 +156,7 @@ var PARALLEL = 3, LONG_SIDE = 2400, QUALITY = 0.92;
 function $(id) { return document.getElementById(id); }
 function pad(n) { return (n < 10 ? '0' : '') + n; }
 var session = Math.random().toString(36).slice(2, 8);
-var items = [], seq = 0, sending = false, cvReady = false;
+var items = [], cvReady = false;
 
 if (!KEY) { $('bad').hidden = false; $('start').disabled = true; }
 
@@ -340,16 +381,26 @@ function flatten(img) {
   return merged;
 }
 
-/** 캔버스(원본) → 펴고 그림자 지운 JPEG Blob. OpenCV 가 없으면 그대로 */
-function processCanvas(canvas) {
-  if (!cvReady) return cvWait.then(function () { return cvReady ? processCanvas(canvas) : toBlob(canvas); });
+/** 캔버스 → 문서 네 모서리 (0~1 비율, [좌상,우상,우하,좌하]) 또는 null */
+function detectQuad(canvas) {
+  if (!cvReady) return null;
+  var src = cv.imread(canvas), q = null;
+  try { q = findDoc(src); } catch (e) { console.error(e); } finally { src.delete(); }
+  return q ? q.map(function (p) { return { x: p.x / canvas.width, y: p.y / canvas.height }; }) : null;
+}
+
+/** 캔버스(원본) + 모서리(비율, null 이면 펴지 않음) → 펴고 그림자 지운 JPEG Blob */
+function renderOut(canvas, q) {
+  if (!cvReady) return toBlob(canvas);
   var src = null, img = null;
   try {
     src = cv.imread(canvas);
-    var q = findDoc(src);
     img = new cv.Mat(); cv.cvtColor(src, img, cv.COLOR_RGBA2RGB);
     src.delete(); src = null;
-    if (q) { var w = warp(img, q); img.delete(); img = w; }
+    if (q) {
+      var px = q.map(function (p) { return { x: p.x * canvas.width, y: p.y * canvas.height }; });
+      var w = warp(img, px); img.delete(); img = w;
+    }
     var flat = flatten(img); img.delete(); img = null;
     var outC = document.createElement('canvas');
     cv.imshow(outC, flat); flat.delete();
@@ -360,7 +411,29 @@ function processCanvas(canvas) {
     return toBlob(canvas);
   }
 }
+
+/** 찍은 사진 → { orig: 원본 JPEG, quad: 찾은 모서리, blob: 보정본 } (모서리 조정 때 원본에서 다시 만듦) */
+function processShot(canvas) {
+  return (cvReady ? Promise.resolve() : cvWait).then(function () {
+    var q = null;
+    try { q = detectQuad(canvas); } catch (e) { console.error(e); }
+    return Promise.all([toBlob(canvas), renderOut(canvas, q)]).then(function (r) {
+      return { orig: r[0], quad: q, blob: r[1] };
+    });
+  });
+}
 function toBlob(c) { return new Promise(function (ok) { c.toBlob(ok, 'image/jpeg', QUALITY); }); }
+function blobToCanvas(blob) {
+  return new Promise(function (ok, bad) {
+    var u = URL.createObjectURL(blob), img = new Image();
+    img.onload = function () {
+      var c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0); URL.revokeObjectURL(u); ok(c);
+    };
+    img.onerror = function () { URL.revokeObjectURL(u); bad(new Error('사진을 열 수 없습니다')); };
+    img.src = u;
+  });
+}
 function fit(w, h, long) { var s = Math.min(1, long / Math.max(w, h)); return { w: Math.round(w * s), h: Math.round(h * s) }; }
 
 // ------------------------------------------------------------------ 자동 연속 촬영 판단 (안드로이드 AutoShot 과 같음)
@@ -483,15 +556,17 @@ function takeShot() {
   var d = fit(vw, vh, LONG_SIDE);
   var c = document.createElement('canvas'); c.width = d.w; c.height = d.h;
   c.getContext('2d').drawImage(video, 0, 0, d.w, d.h);
-  shots++; busy++; showCount();
+  shots++; busy++; showCount(); shutterFx();
   $('flash').style.opacity = '0.7'; setTimeout(function () { $('flash').style.opacity = '0'; }, 120);
-  var takenAt = Date.now(), n = shots;
+  var takenAt = Date.now();
   // 화면이 멈추지 않게 잠깐 뒤에 처리
   setTimeout(function () {
-    processCanvas(c).then(function (blob) {
-      addBlob(blob, takenAt);
-      var u = URL.createObjectURL(blob); $('last').src = u; $('last').hidden = false;
-    }).finally(function () { busy--; showCount(); });
+    processShot(c).then(function (r) {
+      var it = addItem(r, takenAt);
+      $('last').src = it.url; $('last').hidden = false;
+      if (setting('instant')) enqueue([it]);
+    }).catch(function (e) { console.error(e); })
+      .finally(function () { busy--; showCount(); });
   }, 30);
 }
 
@@ -523,16 +598,84 @@ function testStream() {
   });
 }
 
-$('start').onclick = openCamera;
+// 셔터 소리 + 진동 (아이폰은 무음 스위치를 켜면 소리 안 남)
+var actx = null;
+function unlockAudio() {
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch (e) {}
+}
+function shutterFx() {
+  if (navigator.vibrate) try { navigator.vibrate(40); } catch (e) {}
+  if (!actx || !setting('sound')) return;
+  try {
+    var n = Math.round(actx.sampleRate * 0.07), b = actx.createBuffer(1, n, actx.sampleRate), d = b.getChannelData(0);
+    for (var i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 4);
+    var s = actx.createBufferSource(), g = actx.createGain(); s.buffer = b; g.gain.value = 0.6;
+    s.connect(g); g.connect(actx.destination); s.start();
+  } catch (e) {}
+}
+
+$('start').onclick = function () { unlockAudio(); openCamera(); };
 $('done').onclick = closeCamera;
 $('shutter').onclick = function () { shot.markShot(lastQuad, performance.now()); takeShot(); showHint(); };
 $('auto').onclick = function () { autoOn = !autoOn; shot.resetSteady(); showHint(); };
 document.addEventListener('visibilitychange', function () { if (document.hidden && stream) closeCamera(); });
 
-// ------------------------------------------------------------------ 보관함 + 보내기
-function addBlob(blob, takenAt) {
-  items.push({ id: ++seq, blob: blob, url: URL.createObjectURL(blob), at: takenAt, status: 'wait', note: '' });
-  render();
+// ------------------------------------------------------------------ 설정 (이 폰에만 저장)
+var DEFAULTS = { instant: false, sound: true };
+function setting(k) {
+  try { var v = localStorage.getItem('as_' + k); if (v !== null) return v === '1'; } catch (e) {}
+  return DEFAULTS[k];
+}
+function setSetting(k, on) { try { localStorage.setItem('as_' + k, on ? '1' : '0'); } catch (e) {} }
+['instant', 'sound'].forEach(function (k) {
+  var el = $('set_' + k); el.checked = setting(k);
+  el.onchange = function () { setSetting(k, el.checked); if (k === 'sound' && el.checked) unlockAudio(); };
+});
+
+// ------------------------------------------------------------------ 보관 (페이지를 닫았다 열어도 남게: 이 폰의 브라우저 저장소)
+var DB = null;
+function dbOpen() {
+  return new Promise(function (ok) {
+    try {
+      var r = indexedDB.open('autoscan', 1);
+      r.onupgradeneeded = function () { r.result.createObjectStore('items', { keyPath: 'id' }); };
+      r.onsuccess = function () { DB = r.result; ok(); };
+      r.onerror = function () { ok(); };
+    } catch (e) { ok(); }
+  });
+}
+function dbPut(it) {
+  if (!DB) return;
+  try {
+    DB.transaction('items', 'readwrite').objectStore('items').put({
+      id: it.id, name: it.name, at: it.at, orig: it.orig, quad: it.quad, blob: it.blob, want: !!it.want
+    });
+  } catch (e) { console.error(e); }
+}
+function dbDel(id) { if (!DB) return; try { DB.transaction('items', 'readwrite').objectStore('items').delete(id); } catch (e) {} }
+function dbAll() {
+  return new Promise(function (ok) {
+    if (!DB) return ok([]);
+    try {
+      var r = DB.transaction('items').objectStore('items').getAll();
+      r.onsuccess = function () { ok(r.result || []); }; r.onerror = function () { ok([]); };
+    } catch (e) { ok([]); }
+  });
+}
+
+// ------------------------------------------------------------------ 보관함
+var lastId = 0;
+function newId() { lastId = Math.max(Date.now(), lastId + 1); return lastId; }
+
+function addItem(r, takenAt) {
+  var it = { id: newId(), at: takenAt, orig: r.orig, quad: r.quad, blob: r.blob, url: URL.createObjectURL(r.blob), status: 'wait', note: '', want: false };
+  it.name = nameFor(it);
+  items.push(it); dbPut(it); render();
+  return it;
+}
+function removeItem(it) {
+  URL.revokeObjectURL(it.url); dbDel(it.id);
+  items = items.filter(function (o) { return o !== it; }); render();
 }
 
 $('pick').onchange = function (e) {
@@ -544,8 +687,8 @@ $('pick').onchange = function (e) {
         var d = fit(img.naturalWidth, img.naturalHeight, LONG_SIDE);
         var c = document.createElement('canvas'); c.width = d.w; c.height = d.h;
         var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, d.w, d.h); g.drawImage(img, 0, 0, d.w, d.h);
-        return processCanvas(c);
-      }).then(function (blob) { addBlob(blob, f.lastModified || Date.now()); })
+        return processShot(c);
+      }).then(function (r) { addItem(r, f.lastModified || Date.now()); })
         .catch(function (err) { console.error(err); });
     });
   }, Promise.resolve()).then(function () { $('msg').textContent = ''; });
@@ -559,17 +702,21 @@ function loadImage(f) {
   });
 }
 
+function busyItem(it) { return it.status === 'queued' || it.status === 'send'; }
+function isSending() { return items.some(busyItem); }
+
 function render() {
   var g = $('grid'); g.innerHTML = '';
   items.forEach(function (it) {
     var d = document.createElement('div'); d.className = 'th';
     var img = document.createElement('img'); img.src = it.url; img.alt = ''; d.appendChild(img);
-    if (!sending && it.status !== 'ok') {
+    img.onclick = function () { openView(it); };
+    if (!busyItem(it) && it.status !== 'ok') {
       var x = document.createElement('button'); x.className = 'x'; x.textContent = '×'; x.setAttribute('aria-label', '지우기');
-      x.onclick = function () { URL.revokeObjectURL(it.url); items = items.filter(function (o) { return o !== it; }); render(); };
+      x.onclick = function () { removeItem(it); };
       d.appendChild(x);
     }
-    var label = { wait: '', send: '보내는 중…', ok: '보냄', bad: '실패 — 다시 보내기' }[it.status];
+    var label = { wait: '', queued: '보낼 차례 기다림', send: '보내는 중…', ok: '보냄', bad: '실패 — 다시 보내기' }[it.status];
     if (label) {
       var s = document.createElement('div'); s.className = 'st' + (it.status === 'ok' ? ' ok' : it.status === 'bad' ? ' bad' : '');
       s.textContent = it.note || label; d.appendChild(s);
@@ -577,12 +724,13 @@ function render() {
     g.appendChild(d);
   });
   var left = items.filter(function (it) { return it.status === 'wait' || it.status === 'bad'; }).length;
-  var b = $('send');
-  b.disabled = sending || left === 0;
-  b.textContent = sending ? '보내는 중…' : left ? left + '장 모두 보내기' : '보낼 사진 없음';
-  $('clear').hidden = sending || items.length === 0;
+  var sending = isSending(), b = $('send');
+  b.disabled = left === 0;
+  b.textContent = left ? left + '장 모두 보내기' : sending ? '보내는 중…' : '보낼 사진 없음';
+  $('clear').hidden = sending || !items.some(function (it) { return it.status !== 'ok'; });
 }
 
+// ------------------------------------------------------------------ 보내기 (3장씩 동시에, 실패하면 인터넷이 돌아올 때 자동으로 다시)
 function post(obj) {
   // text/plain 으로 보내야 브라우저가 사전 확인(CORS) 없이 보냄
   return fetch(API, { method: 'POST', body: JSON.stringify(obj), headers: { 'Content-Type': 'text/plain;charset=utf-8' } })
@@ -596,35 +744,59 @@ function b64(blob) {
 function nameFor(it) {
   var t = new Date(it.at || Date.now());
   return 'scan_' + t.getFullYear() + pad(t.getMonth() + 1) + pad(t.getDate()) + '_' + pad(t.getHours()) + pad(t.getMinutes()) + pad(t.getSeconds()) +
-    '_web' + session + '_p' + it.id + '.jpg';
+    '_web' + session + '_p' + (it.id % 100000000) + '.jpg';
+}
+
+var active = 0, batch = null;
+function enqueue(list) {
+  list = list.filter(function (it) { return items.indexOf(it) >= 0 && (it.status === 'wait' || it.status === 'bad'); });
+  if (!list.length) return;
+  if (!batch) batch = { n: 0, ok: 0, bad: 0 };
+  list.forEach(function (it) { it.status = 'queued'; it.note = ''; it.want = true; it.fatal = false; dbPut(it); });
+  batch.n += list.length;
+  var m = $('msg'); m.className = 'msg'; m.textContent = '보내는 중… (' + batch.n + '장, 3장씩 동시에)';
+  render(); pump();
+}
+function pump() {
+  while (active < PARALLEL) {
+    var it = null;
+    for (var i = 0; i < items.length; i++) if (items[i].status === 'queued') { it = items[i]; break; }
+    if (!it) break;
+    active++;
+    sendOne(it).then(function () {
+      active--; pump();
+      if (active === 0 && !items.some(busyItem)) finishBatch();
+    });
+  }
 }
 function sendOne(it) {
-  it.status = 'send'; it.note = ''; render();
+  it.status = 'send'; render();
   return b64(it.blob)
-    .then(function (data) { return post({ token: KEY, name: nameFor(it), data: data }); })
+    .then(function (data) { return post({ token: KEY, name: it.name, data: data }); })
     .then(function (r) {
-      if (r && r.ok) { it.status = 'ok'; it.note = r.duplicate ? '이미 받음' : ''; }
-      else { it.status = 'bad'; it.note = '실패: ' + ((r && r.error) || '알 수 없음'); }
+      if (r && r.ok) { it.status = 'ok'; it.note = r.duplicate ? '이미 받음' : ''; dbDel(it.id); batch.ok++; }
+      else { it.status = 'bad'; it.fatal = true; it.note = '실패: ' + ((r && r.error) || '알 수 없음'); batch.bad++; dbPut(it); }
     })
-    .catch(function (e) { it.status = 'bad'; it.note = '실패 — 다시 보내기'; console.error(e); })
+    .catch(function (e) { it.status = 'bad'; it.note = '실패 — 인터넷 되면 다시 보냄'; batch.bad++; dbPut(it); console.error(e); })
     .then(render);
 }
-function sendAll() {
-  var queue = items.filter(function (it) { return it.status === 'wait' || it.status === 'bad'; });
-  if (!queue.length) return;
-  sending = true; $('msg').className = 'msg'; $('msg').textContent = '보내는 중… (' + queue.length + '장, 3장씩 동시에)';
+function finishBatch() {
+  var b = batch; batch = null; if (!b) return;
+  var m = $('msg');
+  if (b.bad) { m.className = 'msg bad'; m.textContent = b.ok + '장 보냄, ' + b.bad + '장 실패. 인터넷이 되면 자동으로 다시 보냅니다(이 화면을 열어 두세요).'; }
+  else { m.className = 'msg ok'; m.textContent = b.ok + '장 전송 완료. 잠시 뒤 품번 폴더에 들어갑니다.'; setTimeout(loadRecent, 8000); }
   render();
-  var i = 0;
-  function worker() { return i < queue.length ? sendOne(queue[i++]).then(worker) : Promise.resolve(); }
-  var ws = []; for (var k = 0; k < Math.min(PARALLEL, queue.length); k++) ws.push(worker());
-  Promise.all(ws).then(function () {
-    sending = false;
-    var bad = queue.filter(function (it) { return it.status === 'bad'; }).length, m = $('msg');
-    if (bad) { m.className = 'msg bad'; m.textContent = (queue.length - bad) + '장 보냄, ' + bad + '장 실패. 인터넷을 확인하고 다시 눌러 주세요.'; }
-    else { m.className = 'msg ok'; m.textContent = queue.length + '장 전송 완료. 잠시 뒤 품번 폴더에 들어갑니다.'; setTimeout(loadRecent, 8000); }
-    render();
-  });
 }
+function sendAll() { enqueue(items.filter(function (it) { return it.status === 'wait' || it.status === 'bad'; })); }
+// 보내기를 눌렀는데 실패한 것만 자동으로 다시 (서버가 거절한 것은 제외)
+function retryFailed() {
+  if (navigator.onLine === false) return;
+  enqueue(items.filter(function (it) { return it.status === 'bad' && it.want && !it.fatal; }));
+}
+window.addEventListener('online', retryFailed);
+setInterval(retryFailed, 30000);
+document.addEventListener('visibilitychange', function () { if (!document.hidden) retryFailed(); });
+
 function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 function loadRecent() {
   var r = $('recent'); r.textContent = '불러오는 중…';
@@ -641,11 +813,139 @@ function loadRecent() {
 
 $('send').onclick = sendAll;
 $('clear').onclick = function () {
-  if (!confirm('목록의 사진을 모두 지울까요?')) return;
-  items.forEach(function (it) { URL.revokeObjectURL(it.url); }); items = []; $('msg').textContent = ''; render();
+  if (!confirm('보내지 않은 사진을 모두 지울까요?')) return;
+  items.filter(function (it) { return !busyItem(it); }).forEach(function (it) { URL.revokeObjectURL(it.url); dbDel(it.id); });
+  items = items.filter(busyItem); $('msg').textContent = ''; render();
 };
 $('more').onclick = loadRecent;
-window.addEventListener('beforeunload', function (e) { if (sending || items.some(function (it) { return it.status !== 'ok'; })) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', function (e) { if (isSending()) { e.preventDefault(); e.returnValue = ''; } });
+
+// ------------------------------------------------------------------ 크게 보기
+var viewIt = null;
+function openView(it) {
+  viewIt = it; $('vimg').src = it.url; $('view').hidden = false;
+  var locked = busyItem(it) || it.status === 'ok';
+  $('vadj').hidden = locked; $('vdel').hidden = locked;
+  $('vnote').textContent = it.status === 'ok' ? '보낸 사진입니다.' : busyItem(it) ? '보내는 중이라 고칠 수 없습니다.' : '';
+}
+function closeView() { $('view').hidden = true; viewIt = null; }
+$('vclose').onclick = closeView;
+$('vdel').onclick = function () { if (viewIt) removeItem(viewIt); closeView(); };
+$('vadj').onclick = function () { if (viewIt) openAdjust(viewIt); };
+
+// ------------------------------------------------------------------ 모서리 조정 (흰 점 네 개를 끌어 맞추기)
+var FULL = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }];
+var adj = { it: null, src: null, q: null, drag: -1, lay: null, pt: null };
+function cloneQ(q) { return q.map(function (p) { return { x: p.x, y: p.y }; }); }
+function openAdjust(it) {
+  blobToCanvas(it.orig).then(function (c) {
+    adj.it = it; adj.src = c; adj.q = cloneQ(it.quad || FULL); adj.drag = -1;
+    $('adj').hidden = false; drawAdj();
+  }).catch(function (e) { alert('원본을 열 수 없습니다: ' + e.message); });
+}
+function closeAdjust() { $('adj').hidden = true; adj.it = null; adj.src = null; }
+function drawAdj() {
+  var cv0 = $('acan'), st = $('astage').getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  cv0.width = Math.round(st.width * dpr); cv0.height = Math.round(st.height * dpr);
+  var g = cv0.getContext('2d'), m = 28 * dpr, W = cv0.width - 2 * m, H = cv0.height - 2 * m;
+  var a = adj.src.width / adj.src.height, w = Math.min(W, H * a), h = w / a;
+  var L = { x: m + (W - w) / 2, y: m + (H - h) / 2, w: w, h: h, dpr: dpr }; adj.lay = L;
+  g.fillStyle = '#000'; g.fillRect(0, 0, cv0.width, cv0.height);
+  g.drawImage(adj.src, L.x, L.y, w, h);
+  var P = adj.q.map(function (p) { return { x: L.x + p.x * w, y: L.y + p.y * h }; });
+  // 바깥 어둡게
+  g.save(); g.beginPath(); g.rect(0, 0, cv0.width, cv0.height);
+  P.forEach(function (p, i) { if (i) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y); }); g.closePath();
+  g.fillStyle = 'rgba(0,0,0,.45)'; g.fill('evenodd'); g.restore();
+  g.beginPath(); P.forEach(function (p, i) { if (i) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y); }); g.closePath();
+  g.lineWidth = 3 * dpr; g.strokeStyle = '#3d8bfd'; g.stroke();
+  P.forEach(function (p, i) {
+    g.beginPath(); g.arc(p.x, p.y, (i === adj.drag ? 15 : 12) * dpr, 0, Math.PI * 2);
+    g.fillStyle = '#fff'; g.fill(); g.lineWidth = 3 * dpr; g.strokeStyle = '#3d8bfd'; g.stroke();
+  });
+  // 끄는 동안 손가락 밑을 확대해서 보여줌
+  if (adj.drag >= 0) {
+    var p = adj.q[adj.drag], R = 60 * dpr, Z = 2.5, sx = p.x * adj.src.width, sy = p.y * adj.src.height;
+    var srcR = R / Z * (adj.src.width / w);
+    var cx = (P[adj.drag].x < cv0.width / 2) ? cv0.width - R - 12 * dpr : R + 12 * dpr, cy = R + 12 * dpr;
+    g.save(); g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.clip();
+    g.fillStyle = '#000'; g.fillRect(cx - R, cy - R, 2 * R, 2 * R);
+    g.drawImage(adj.src, sx - srcR, sy - srcR, 2 * srcR, 2 * srcR, cx - R, cy - R, 2 * R, 2 * R);
+    g.restore();
+    g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.lineWidth = 3 * dpr; g.strokeStyle = '#fff'; g.stroke();
+    g.beginPath(); g.moveTo(cx - 10 * dpr, cy); g.lineTo(cx + 10 * dpr, cy); g.moveTo(cx, cy - 10 * dpr); g.lineTo(cx, cy + 10 * dpr);
+    g.lineWidth = 2 * dpr; g.strokeStyle = '#3d8bfd'; g.stroke();
+  }
+}
+function adjPos(e) {
+  var r = $('acan').getBoundingClientRect(), d = adj.lay.dpr;
+  return { x: (e.clientX - r.left) * d, y: (e.clientY - r.top) * d };
+}
+$('acan').addEventListener('pointerdown', function (e) {
+  if (!adj.lay) return;
+  var p = adjPos(e), L = adj.lay, best = -1, bd = 48 * L.dpr;
+  adj.q.forEach(function (q, i) {
+    var dd = Math.hypot(L.x + q.x * L.w - p.x, L.y + q.y * L.h - p.y);
+    if (dd < bd) { bd = dd; best = i; }
+  });
+  if (best < 0) return;
+  adj.drag = best;
+  var q = adj.q[best]; adj.pt = { dx: L.x + q.x * L.w - p.x, dy: L.y + q.y * L.h - p.y };
+  try { $('acan').setPointerCapture(e.pointerId); } catch (er) {}
+  e.preventDefault(); drawAdj();
+});
+$('acan').addEventListener('pointermove', function (e) {
+  if (adj.drag < 0) return;
+  var p = adjPos(e), L = adj.lay;
+  adj.q[adj.drag] = {
+    x: Math.min(1, Math.max(0, (p.x + adj.pt.dx - L.x) / L.w)),
+    y: Math.min(1, Math.max(0, (p.y + adj.pt.dy - L.y) / L.h))
+  };
+  e.preventDefault(); drawAdj();
+});
+function endDrag() { if (adj.drag >= 0) { adj.drag = -1; drawAdj(); } }
+$('acan').addEventListener('pointerup', endDrag);
+$('acan').addEventListener('pointercancel', endDrag);
+window.addEventListener('resize', function () { if (!$('adj').hidden && adj.src) drawAdj(); });
+
+$('aauto').onclick = function () {
+  if (!cvReady) { alert('스캔 기능을 아직 불러오는 중입니다.'); return; }
+  var q = detectQuad(adj.src);
+  if (q) { adj.q = q; drawAdj(); } else alert('문서 테두리를 찾지 못했습니다. 점을 직접 옮겨 주세요.');
+};
+$('afull').onclick = function () { adj.q = cloneQ(FULL); drawAdj(); };
+$('acancel').onclick = closeAdjust;
+$('aok').onclick = function () {
+  var it = adj.it, src = adj.src; if (!it) return;
+  var q = order(adj.q);
+  var full = q.every(function (p, i) { return Math.abs(p.x - FULL[i].x) < 0.005 && Math.abs(p.y - FULL[i].y) < 0.005; });
+  // 모양이 너무 찌그러지면(네 점이 거의 한 줄) 막음
+  var area = 0; for (var i = 0; i < 4; i++) { var a = q[i], b = q[(i + 1) % 4]; area += a.x * b.y - b.x * a.y; }
+  if (Math.abs(area) / 2 < 0.02) { alert('네 점이 너무 붙어 있습니다. 문서 모서리에 맞춰 주세요.'); return; }
+  $('aok').disabled = true; $('aok').textContent = '만드는 중…';
+  setTimeout(function () {
+    renderOut(src, full ? null : q).then(function (blob) {
+      URL.revokeObjectURL(it.url);
+      it.blob = blob; it.quad = full ? null : q; it.url = URL.createObjectURL(blob);
+      if (it.status === 'bad' && it.fatal) { it.status = 'wait'; it.note = ''; }
+      dbPut(it); render(); closeAdjust(); openView(it);
+    }).finally(function () { $('aok').disabled = false; $('aok').textContent = '적용'; });
+  }, 30);
+};
+
+// ------------------------------------------------------------------ 시작: 저장해 둔 사진 다시 불러오기
+dbOpen().then(dbAll).then(function (rows) {
+  rows.sort(function (a, b) { return a.id - b.id; }).forEach(function (r) {
+    if (!r.blob) return;
+    lastId = Math.max(lastId, r.id);
+    items.push({ id: r.id, name: r.name, at: r.at, orig: r.orig || r.blob, quad: r.quad || null, blob: r.blob,
+      url: URL.createObjectURL(r.blob), want: !!r.want,
+      status: r.want ? 'bad' : 'wait', note: r.want ? '보내다 멈춤 — 다시 보냄' : '' });
+  });
+  if (rows.length) { var m = $('msg'); m.className = 'msg'; m.textContent = '지난번에 보내지 않은 사진 ' + rows.length + '장을 불러왔습니다.'; }
+  render(); retryFailed();
+});
+try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
 render();
 </script>
 </body>
