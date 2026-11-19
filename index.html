@@ -56,6 +56,17 @@
   #last { position:absolute; right:12px; bottom:12px; width:56px; height:74px; border-radius:8px; border:2px solid #fff; object-fit:cover; background:#222; }
   #count { position:absolute; left:12px; bottom:12px; color:#fff; background:rgba(0,0,0,.55); padding:4px 10px; border-radius:20px; font-weight:600; }
   .th img { cursor:pointer; }
+  .th .dt { position:absolute; top:4px; left:4px; padding:2px 7px; border-radius:10px; font-size:12px; font-weight:700; color:#fff; background:rgba(0,0,0,.6); }
+  /* 검사일자 고르기: 투명한 날짜 칸을 위에 덮어 누르면 바로 달력이 열림 */
+  .dpick { position:relative; display:flex; align-items:center; justify-content:center; gap:8px; overflow:hidden; cursor:pointer; }
+  .dpick input { position:absolute; inset:0; width:100%; height:100%; opacity:0; border:0; margin:0; padding:0; cursor:pointer; -webkit-appearance:none; appearance:none; }
+  #hdate { flex-direction:column; gap:2px; padding:8px 12px; width:100%; min-height:60px; margin-bottom:10px; border-radius:12px; background:var(--card); border:2px solid var(--pri); color:var(--fg, inherit); font-size:18px; font-weight:700; }
+  #hdate span { white-space:nowrap; }
+  #hdate small { font-size:13px; font-weight:600; color:var(--sub); }
+  #hdate.other { border-color:#e8890c; background:#fff4e5; color:#8a4b00; }
+  #hdate.other small { color:#8a4b00; }
+  #cdate { position:absolute; left:50%; bottom:12px; transform:translateX(-50%); padding:8px 14px; border-radius:22px; background:rgba(0,0,0,.65); color:#fff; font-weight:700; font-size:16px; border:2px solid #fff; white-space:nowrap; }
+  #cdate.other { background:#e8890c; border-color:#ffd9a6; }
   .set label { display:flex; align-items:center; gap:10px; min-height:40px; font-size:15px; }
   .set input { width:22px; height:22px; accent-color:var(--pri); }
   /* 크게 보기 · 모서리 조정 */
@@ -85,9 +96,10 @@
 <body>
 <main id="home">
   <h1>자동스캔</h1>
-  <p class="sub">성적서를 비추면 테두리를 찾아 자동으로 찍고, 보내면 품번 폴더로 자동 분류됩니다.</p>
+  <p class="sub">성적서를 비추면 테두리를 찾아 자동으로 찍고, 보내면 고른 검사일자 폴더에 ‘품번_월.일’ 이름으로 저장됩니다.</p>
   <div id="bad" class="msg bad" hidden>주소가 올바르지 않습니다. 관리자에게 받은 주소를 그대로 열어 주세요.</div>
 
+  <label id="hdate" class="dpick"><span>검사일자 <b id="hdtxt"></b></span><small id="hdnote"></small><input type="date" id="insp" aria-label="검사일자"></label>
   <button id="start" class="pri">자동 스캔 시작</button>
   <label class="btn alt">앨범에서 고르기<input id="pick" type="file" accept="image/*" multiple></label>
   <div id="cvstate">스캔 기능 준비 중… (먼저 ‘자동 스캔 시작’을 눌러도 됩니다)</div>
@@ -107,6 +119,7 @@
   <div class="card">
     <h2>사용법</h2>
     <ul>
+      <li><b>검사일자</b>를 먼저 확인하세요. 처음엔 오늘이고, 다른 날 성적서면 눌러서 바꿉니다. 이 날짜로 날짜 폴더에 저장되고 이름이 ‘품번_월.일’이 됩니다.</li>
       <li>‘자동 스캔 시작’ → 문서를 비추면 파란 테두리가 잡히고, 초록으로 바뀌면 저절로 찍힙니다.</li>
       <li>다음 문서로 바꾸면 버튼 없이 또 찍힙니다. 다 찍으면 ‘완료’ → ‘모두 보내기’.</li>
       <li>찍은 사진은 반듯하게 펴고 그림자를 지워서 보냅니다. 사진을 누르면 크게 보고, ‘모서리 조정’으로 고치거나 지울 수 있습니다.</li>
@@ -129,6 +142,7 @@
     <div id="flash"></div>
     <div id="hint"></div>
     <div id="count">0장</div>
+    <label id="cdate" class="dpick"><span id="cdtxt"></span><input type="date" id="insp2" aria-label="검사일자"></label>
     <img id="last" alt="" hidden>
   </div>
   <div id="bar">
@@ -175,6 +189,25 @@ var PARALLEL = 6, LONG_SIDE = 2400, QUALITY = 0.85;
 
 function $(id) { return document.getElementById(id); }
 function pad(n) { return (n < 10 ? '0' : '') + n; }
+// 검사일자: 찍을 때 사람이 고른 날짜 (손글씨를 읽지 않으므로 틀리지 않음). 열 때마다 오늘로 시작
+function ymd(t) { return t.getFullYear() + '-' + pad(t.getMonth() + 1) + '-' + pad(t.getDate()); }
+var inspDay = ymd(new Date());
+function inspOf(it) { var m = /_D(\d{4})(\d{2})(\d{2})/.exec(it.name || ''); return m ? m[2] + '.' + m[3] : ''; }
+function showInsp() {
+  var today = ymd(new Date()), p = inspDay.split('-'), md = p[1] + '.' + p[2], other = inspDay !== today;
+  ['insp', 'insp2'].forEach(function (id) { var el = document.getElementById(id); if (el) { el.value = inspDay; el.max = today; } });
+  var h = document.getElementById('hdtxt'); if (!h) return;
+  h.textContent = p[0] + '.' + md;
+  document.getElementById('hdnote').textContent = other ? '(오늘 아님 · 눌러서 바꾸기)' : '(오늘 · 눌러서 바꾸기)';
+  document.getElementById('hdate').className = 'dpick' + (other ? ' other' : '');
+  document.getElementById('cdtxt').textContent = '검사일자 ' + md + (other ? ' (오늘 아님)' : '');
+  document.getElementById('cdate').className = 'dpick' + (other ? ' other' : '');
+}
+function setInsp(v) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v || '')) { showInsp(); return; } // 지우기를 누르면 그대로 둠
+  if (v > ymd(new Date())) { alert('검사일자는 오늘보다 뒤일 수 없습니다.'); showInsp(); return; }
+  inspDay = v; showInsp();
+}
 var session = Math.random().toString(36).slice(2, 8);
 var items = [], cvReady = false;
 
@@ -806,7 +839,7 @@ var lastId = 0;
 function newId() { lastId = Math.max(Date.now(), lastId + 1); return lastId; }
 
 function addItem(r, takenAt) {
-  var it = { id: newId(), at: takenAt, orig: r.orig, quad: r.quad, blob: r.blob, url: URL.createObjectURL(r.blob), status: 'wait', note: '', want: false };
+  var it = { id: newId(), at: takenAt, insp: inspDay, orig: r.orig, quad: r.quad, blob: r.blob, url: URL.createObjectURL(r.blob), status: 'wait', note: '', want: false };
   it.name = nameFor(it);
   items.push(it); dbPut(it); render();
   return it;
@@ -849,6 +882,8 @@ function render() {
     var d = document.createElement('div'); d.className = 'th';
     var img = document.createElement('img'); img.src = it.url; img.alt = ''; d.appendChild(img);
     img.onclick = function () { openSlider(items.slice(), items.indexOf(it)); };
+    var dt = inspOf(it);
+    if (dt) { var dl = document.createElement('div'); dl.className = 'dt'; dl.textContent = dt; d.appendChild(dl); }
     if (!busyItem(it) && it.status !== 'ok') {
       var x = document.createElement('button'); x.className = 'x'; x.textContent = '×'; x.setAttribute('aria-label', '지우기');
       x.onclick = function () { removeItem(it); };
@@ -886,7 +921,7 @@ function b64(blob) {
 function nameFor(it) {
   var t = new Date(it.at || Date.now());
   return 'scan_' + t.getFullYear() + pad(t.getMonth() + 1) + pad(t.getDate()) + '_' + pad(t.getHours()) + pad(t.getMinutes()) + pad(t.getSeconds()) +
-    '_web' + session + '_p' + (it.id % 100000000) + '.jpg';
+    '_web' + session + '_p' + (it.id % 100000000) + '_D' + (it.insp || inspDay).replace(/-/g, '') + '.jpg';
 }
 
 var active = 0, batch = null;
@@ -1154,6 +1189,12 @@ dbOpen().then(dbAll).then(function (rows) {
   render(); retryFailed();
 });
 try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+['insp', 'insp2'].forEach(function (id) {
+  var el = $(id);
+  el.onchange = function () { setInsp(el.value); };
+  el.onblur = function () { setInsp(el.value); };
+});
+showInsp();
 render();
 </script>
 </body>
