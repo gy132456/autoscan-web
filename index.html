@@ -171,7 +171,7 @@ var API = 'https://script.google.com/macros/s/AKfycbzZmE_KpivdEsheJdkr7BxWnKPZsa
 var PARAMS = new URLSearchParams(location.hash.slice(1));
 var KEY = PARAMS.get('k') || '';
 var TEST = PARAMS.get('test') === '1';   // 시험용: 카메라 대신 test.jpg
-var PARALLEL = 3, LONG_SIDE = 3200, QUALITY = 0.92;
+var PARALLEL = 3, LONG_SIDE = 2400, QUALITY = 0.92;
 
 function $(id) { return document.getElementById(id); }
 function pad(n) { return (n < 10 ? '0' : '') + n; }
@@ -907,7 +907,7 @@ function pump() {
 function sendOne(it) {
   it.status = 'send'; render();
   return b64(it.blob)
-    .then(function (data) { return post({ token: KEY, name: it.name, data: data }); })
+    .then(function (data) { return post({ token: KEY, name: it.name, data: data, later: true }); })
     .then(function (r) {
       if (r && r.ok) { it.status = 'ok'; it.note = r.duplicate ? '이미 받음' : ''; dbDel(it.id); batch.ok++; }
       else { it.status = 'bad'; it.fatal = true; it.note = '실패: ' + ((r && r.error) || '알 수 없음'); batch.bad++; dbPut(it); }
@@ -920,7 +920,7 @@ function finishBatch() {
   var b = batch; batch = null; if (!b) return;
   var m = $('msg');
   if (b.bad) { m.className = 'msg bad'; m.textContent = b.ok + '장 보냄, ' + b.bad + '장 실패. 인터넷이 되면 자동으로 다시 보냅니다(이 화면을 열어 두세요).'; }
-  else { m.className = 'msg ok'; m.textContent = b.ok + '장 전송 완료. 잠시 뒤 품번 폴더에 들어갑니다.'; setTimeout(loadRecent, 8000); }
+  else { m.className = 'msg ok'; m.textContent = b.ok + '장 전송 완료. 잠시 뒤 품번 폴더에 들어갑니다.'; setTimeout(loadRecent, 70000); }
   render();
 }
 function sendAll() { enqueue(items.filter(function (it) { return it.status === 'wait' || it.status === 'bad'; })); }
