@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="robots" content="noindex">
+<title>자동스캔</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --ink:#1d2330; --sub:#5d6675; --line:#dfe3ea; --pri:#2f6fe4; --ok:#1f9d55; --bad:#d64545; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#111418; --card:#1b2027; --ink:#e8ecf2; --sub:#9aa4b3; --line:#2c333d; --pri:#5b8ef0; --ok:#3cc47a; --bad:#f06a6a; }
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  [hidden] { display:none !important; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+  main { max-width:560px; margin:0 auto; padding:16px; }
+  h1 { font-size:22px; margin:8px 0 4px; }
+  .sub { color:var(--sub); font-size:14px; margin:0 0 16px; }
+  button, label.btn { display:flex; align-items:center; justify-content:center; min-height:52px; border-radius:12px; border:0;
+    font-family:inherit; font-size:16px; font-weight:600; line-height:1.2; cursor:pointer; padding:0 12px; text-align:center; }
+  .pri { background:var(--pri); color:#fff; width:100%; min-height:60px; font-size:18px; }
+  label.btn.alt { background:var(--card); color:var(--pri); border:1.5px solid var(--pri); margin-top:10px; }
+  input[type=file] { display:none; }
+  #send { width:100%; margin-top:16px; background:var(--ok); color:#fff; }
+  #send:disabled { opacity:.45; cursor:default; }
+  #clear { width:100%; margin-top:8px; background:transparent; color:var(--sub); min-height:40px; font-weight:500; }
+  .grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-top:16px; }
+  .th { position:relative; aspect-ratio:3/4; border-radius:10px; overflow:hidden; background:var(--card); border:1px solid var(--line); }
+  .th img { width:100%; height:100%; object-fit:cover; display:block; }
+  .th .x { position:absolute; top:4px; right:4px; width:30px; height:30px; min-height:0; border-radius:50%; padding:0; background:rgba(0,0,0,.6); color:#fff; font-size:18px; }
+  .th .st { position:absolute; left:0; right:0; bottom:0; padding:4px 6px; font-size:12px; font-weight:600; color:#fff; background:rgba(0,0,0,.55); }
+  .th .st.ok { background:var(--ok); } .th .st.bad { background:var(--bad); }
+  .msg { margin-top:12px; min-height:24px; font-weight:600; }
+  .msg.ok { color:var(--ok); } .msg.bad { color:var(--bad); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-top:20px; }
+  .card h2 { font-size:16px; margin:0 0 8px; }
+  .card ul { margin:0; padding-left:18px; color:var(--sub); font-size:14px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  td, th { text-align:left; padding:6px 4px; border-top:1px solid var(--line); vertical-align:top; word-break:break-all; }
+  th { color:var(--sub); font-weight:600; border-top:0; }
+  #more { width:100%; margin-top:8px; background:transparent; color:var(--pri); border:1px solid var(--line); min-height:44px; }
+  #cvstate { font-size:13px; color:var(--sub); margin-top:8px; }
+
+  /* 촬영 화면 */
+  #cam { position:fixed; inset:0; background:#000; z-index:10; display:flex; flex-direction:column; }
+  #stage { position:relative; flex:1; overflow:hidden; }
+  #video, #ov { position:absolute; inset:0; width:100%; height:100%; }
+  #video { object-fit:contain; }
+  #hint { position:absolute; top:0; left:0; right:0; padding:calc(env(safe-area-inset-top) + 10px) 14px 10px; background:rgba(0,0,0,.55); color:#fff; font-size:15px; white-space:pre-line; }
+  #flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .15s; }
+  #bar { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 16px calc(env(safe-area-inset-bottom) + 12px); background:#000; }
+  #bar button { min-height:46px; background:#2a2f38; color:#fff; font-size:15px; flex:1; }
+  #shutter { flex:0 0 72px !important; width:72px; height:72px; min-height:72px !important; border-radius:50% !important; background:#fff !important; border:5px solid #9aa4b3 !important; }
+  #last { position:absolute; right:12px; bottom:12px; width:56px; height:74px; border-radius:8px; border:2px solid #fff; object-fit:cover; background:#222; }
+  #count { position:absolute; left:12px; bottom:12px; color:#fff; background:rgba(0,0,0,.55); padding:4px 10px; border-radius:20px; font-weight:600; }
+</style>
+</head>
+<body>
+<main id="home">
+  <h1>자동스캔</h1>
+  <p class="sub">성적서를 비추면 테두리를 찾아 자동으로 찍고, 보내면 품번 폴더로 자동 분류됩니다.</p>
+  <div id="bad" class="msg bad" hidden>주소가 올바르지 않습니다. 관리자에게 받은 주소를 그대로 열어 주세요.</div>
+
+  <button id="start" class="pri">자동 스캔 시작</button>
+  <label class="btn alt">앨범에서 고르기<input id="pick" type="file" accept="image/*" multiple></label>
+  <div id="cvstate">스캔 기능 준비 중… (처음 한 번은 10초쯤 걸릴 수 있습니다)</div>
+
+  <div id="grid" class="grid"></div>
+  <button id="send" disabled>보낼 사진 없음</button>
+  <button id="clear" hidden>모두 지우기</button>
+  <div id="msg" class="msg"></div>
+
+  <div class="card">
+    <h2>사용법</h2>
+    <ul>
+      <li>‘자동 스캔 시작’ → 문서를 비추면 파란 테두리가 잡히고, 초록으로 바뀌면 저절로 찍힙니다.</li>
+      <li>다음 문서로 바꾸면 버튼 없이 또 찍힙니다. 다 찍으면 ‘완료’ → ‘모두 보내기’.</li>
+      <li>찍은 사진은 반듯하게 펴고 그림자를 지워서 보냅니다.</li>
+      <li>홈 화면에 추가해 두면 앱처럼 쓸 수 있습니다. (공유 버튼 → 홈 화면에 추가)</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>최근 분류 결과</h2>
+    <div id="recent" class="sub" style="margin:0">아래 버튼을 누르면 보입니다.</div>
+    <button id="more">최근 결과 보기</button>
+  </div>
+</main>
+
+<section id="cam" hidden>
+  <div id="stage">
+    <video id="video" playsinline muted autoplay></video>
+    <canvas id="ov"></canvas>
+    <div id="flash"></div>
+    <div id="hint"></div>
+    <div id="count">0장</div>
+    <img id="last" alt="" hidden>
+  </div>
+  <div id="bar">
+    <button id="auto">자동: 켬</button>
+    <button id="shutter" aria-label="찍기"></button>
+    <button id="done">완료</button>
+  </div>
+</section>
+
+<script>
+// ------------------------------------------------------------------ 설정
+var API = 'https://script.google.com/macros/s/AKfycbzZmE_KpivdEsheJdkr7BxWnKPZsaTU_bP67ynOlS2-is9DWQSYQnTP8-ne6TtHDu03/exec';
+var PARAMS = new URLSearchParams(location.hash.slice(1));
+var KEY = PARAMS.get('k') || '';
+var TEST = PARAMS.get('test') === '1';   // 시험용: 카메라 대신 test.jpg
+var PARALLEL = 3, LONG_SIDE = 2400, QUALITY = 0.92;
+
+function $(id) { return document.getElementById(id); }
+function pad(n) { return (n < 10 ? '0' : '') + n; }
+var session = Math.random().toString(36).slice(2, 8);
+var items = [], seq = 0, sending = false, cvReady = false;
+
+if (!KEY) { $('bad').hidden = false; $('start').disabled = true; }
+
+// ------------------------------------------------------------------ OpenCV 준비
+window.Module = { onRuntimeInitialized: function () { cvReady = true; $('cvstate').textContent = '스캔 기능 준비 완료'; } };
+(function () {
+  var s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js';
+  s.async = true;
+  s.onload = function () {
+    // 이 빌드는 cv 가 Promise 인 경우가 있음
+    if (window.cv && typeof window.cv.then === 'function') {
+      window.cv.then(function (m) { window.cv = m; cvReady = true; $('cvstate').textContent = '스캔 기능 준비 완료'; });
+    } else if (window.cv && window.cv.Mat) { cvReady = true; $('cvstate').textContent = '스캔 기능 준비 완료'; }
+  };
+  s.onerror = function () { $('cvstate').textContent = '스캔 기능을 불러오지 못했습니다. 인터넷을 확인하고 새로고침해 주세요.'; };
+  document.head.appendChild(s);
+})();
+
+// ------------------------------------------------------------------ 문서 테두리 찾기 (안드로이드 앱 DocProcessor 와 같은 방식)
+function order(p) {
+  var tl = p[0], br = p[0], tr = p[0], bl = p[0];
+  p.forEach(function (q) {
+    if (q.x + q.y < tl.x + tl.y) tl = q;
+    if (q.x + q.y > br.x + br.y) br = q;
+    if (q.y - q.x < tr.y - tr.x) tr = q;
+    if (q.y - q.x > bl.y - bl.x) bl = q;
+  });
+  return [tl, tr, br, bl];
+}
+function hist(data, maskData) {
+  var h = new Uint32Array(256), n = 0;
+  for (var i = 0; i < data.length; i++) if (!maskData || maskData[i]) { h[data[i]]++; n++; }
+  return { h: h, n: n };
+}
+function pct(hh, p) {
+  var target = hh.n * p, acc = 0;
+  for (var i = 0; i < 256; i++) { acc += hh.h[i]; if (acc >= target) return i; }
+  return 255;
+}
+function pointsOf(m) {
+  var d = m.data32S, out = [];
+  for (var i = 0; i < m.rows; i++) out.push({ x: d[2 * i], y: d[2 * i + 1] });
+  return out;
+}
+
+function findDoc(src) { // src: RGBA Mat → [좌상, 우상, 우하, 좌하] (src 픽셀) 또는 null
+  var s = Math.min(1, 640 / Math.max(src.cols, src.rows));
+  var T = []; function k(m) { T.push(m); return m; }
+  try {
+    var small = k(new cv.Mat()); cv.resize(src, small, new cv.Size(0, 0), s, s, cv.INTER_AREA);
+    var rgb = k(new cv.Mat()); cv.cvtColor(small, rgb, cv.COLOR_RGBA2RGB);
+    var gray = k(new cv.Mat()); cv.cvtColor(rgb, gray, cv.COLOR_RGB2GRAY);
+    var blur = k(new cv.Mat()); cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
+    var W = gray.cols, H = gray.rows, total = W * H, cands = [];
+
+    // 1) 종이 영역: 밝고 색 없음
+    var cb = k(new cv.Mat()); cv.GaussianBlur(rgb, cb, new cv.Size(5, 5), 0);
+    var lab = k(new cv.Mat()); cv.cvtColor(cb, lab, cv.COLOR_RGB2Lab);
+    var ch = k(new cv.MatVector()); cv.split(lab, ch);
+    var L = k(ch.get(0)), A = k(ch.get(1)), B = k(ch.get(2));
+    var c128 = k(new cv.Mat(H, W, cv.CV_8UC1, new cv.Scalar(128)));
+    var da = k(new cv.Mat()); cv.absdiff(A, c128, da);
+    var db = k(new cv.Mat()); cv.absdiff(B, c128, db);
+    var chroma = k(new cv.Mat()); cv.add(da, db, chroma);
+    var gray0 = k(new cv.Mat()); cv.threshold(chroma, gray0, 21, 255, cv.THRESH_BINARY_INV);
+    var otsu = cv.threshold(L, k(new cv.Mat()), 0, 255, cv.THRESH_BINARY | cv.THRESH_OTSU);
+    var p75 = pct(hist(L.data), 0.75);
+    var k9 = k(cv.Mat.ones(9, 9, cv.CV_8U)), k5 = k(cv.Mat.ones(5, 5, cv.CV_8U)), k3 = k(cv.Mat.ones(3, 3, cv.CV_8U));
+    [otsu, otsu + 15, otsu + 30, otsu + 45, p75].forEach(function (lt) {
+      if (lt >= 250) return;
+      var m = k(new cv.Mat()); cv.threshold(L, m, lt - 1, 255, cv.THRESH_BINARY);
+      cv.bitwise_and(m, gray0, m);
+      cv.morphologyEx(m, m, cv.MORPH_CLOSE, k9);
+      cv.morphologyEx(m, m, cv.MORPH_OPEN, k5);
+      var cs = k(new cv.MatVector()), hi = k(new cv.Mat());
+      cv.findContours(m, cs, hi, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+      topContours(cs, 2, k).forEach(function (c) {
+        var hull = k(new cv.Mat()); cv.convexHull(c, hull, false, true);
+        if (hull.rows < 4) return;
+        var per = cv.arcLength(hull, true);
+        var eps = [0.02, 0.03, 0.04, 0.05, 0.06];
+        for (var i = 0; i < eps.length; i++) {
+          var ap = k(new cv.Mat()); cv.approxPolyDP(hull, ap, eps[i] * per, true);
+          if (ap.rows === 4) { cands.push(pointsOf(ap)); break; }
+          if (ap.rows < 4) break;
+        }
+      });
+    });
+
+    // 2) 가장자리: 민감도 3가지
+    var med = pct(hist(blur.data), 0.5);
+    [[30, 90], [50, 150], [0.5 * med, 1.2 * med]].forEach(function (t) {
+      var e = k(new cv.Mat()); cv.Canny(blur, e, t[0], t[1]); cv.dilate(e, e, k3);
+      var cs = k(new cv.MatVector()), hi = k(new cv.Mat());
+      cv.findContours(e, cs, hi, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+      topContours(cs, 8, k).forEach(function (c) {
+        var ap = k(new cv.Mat()); cv.approxPolyDP(c, ap, 0.02 * cv.arcLength(c, true), true);
+        if (ap.rows === 4) cands.push(pointsOf(ap));
+      });
+    });
+
+    // 고르기
+    var edge = k(new cv.Mat()); cv.Canny(blur, edge, 20, 60);
+    var k9b = k(cv.Mat.ones(9, 9, cv.CV_8U)); cv.dilate(edge, edge, k9b);
+    var best = null, bestScore = -1;
+    cands.forEach(function (q) {
+      var sc = score(gray, q, total, edge.data, W, H, k);
+      if (sc > bestScore) { bestScore = sc; best = q; }
+    });
+    if (!best) return null;
+    return order(best.map(function (p) { return { x: p.x / s, y: p.y / s }; }));
+  } finally {
+    T.forEach(function (m) { try { m.delete(); } catch (e) {} });
+  }
+}
+
+function topContours(cs, n, k) {
+  var list = [];
+  for (var i = 0; i < cs.size(); i++) { var c = k(cs.get(i)); list.push({ c: c, a: cv.contourArea(c) }); }
+  list.sort(function (a, b) { return b.a - a.a; });
+  return list.slice(0, n).map(function (o) { return o.c; });
+}
+
+function score(gray, q, total, eb, W, H, k) {
+  var o = order(q);
+  for (var i = 0; i < 4; i++) for (var j = i + 1; j < 4; j++) if (o[i] === o[j]) return -1;
+  // 볼록 + 넓이
+  var sign = 0, area = 0;
+  for (i = 0; i < 4; i++) {
+    var a = o[i], b = o[(i + 1) % 4], c = o[(i + 2) % 4];
+    var cr = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+    if (cr === 0) return -1;
+    if (sign === 0) sign = Math.sign(cr); else if (Math.sign(cr) !== sign) return -1;
+    area += a.x * b.y - b.x * a.y;
+  }
+  var ratio = Math.abs(area) / 2 / total;
+  if (ratio < 0.12 || ratio > 0.98) return -1;
+  // 각 60~120도
+  for (i = 0; i < 4; i++) {
+    var p = o[(i + 3) % 4], m = o[i], n = o[(i + 1) % 4];
+    var v1x = p.x - m.x, v1y = p.y - m.y, v2x = n.x - m.x, v2y = n.y - m.y;
+    var cos = Math.abs(v1x * v2x + v1y * v2y) / (Math.hypot(v1x, v1y) * Math.hypot(v2x, v2y) + 1e-9);
+    if (cos > 0.5) return -1;
+  }
+  // 네 변이 윤곽선 위에 있는 비율
+  var worst = 1, sum = 0;
+  for (i = 0; i < 4; i++) {
+    var A = o[i], B = o[(i + 1) % 4];
+    var cnt = Math.max(8, Math.floor(Math.hypot(B.x - A.x, B.y - A.y) / 3)), hit = 0, inside = 0;
+    for (j = 0; j < cnt; j++) {
+      var t = 0.08 + 0.84 * j / (cnt - 1);
+      var x = Math.round(A.x + (B.x - A.x) * t), y = Math.round(A.y + (B.y - A.y) * t);
+      if (x < 0 || x >= W || y < 0 || y >= H) continue;
+      inside++; if (eb[y * W + x]) hit++;
+    }
+    if (inside < cnt * 0.5) return -1;
+    var v = hit / inside; worst = Math.min(worst, v); sum += v;
+  }
+  var mean = sum / 4;
+  if (worst < 0.35 || mean < 0.7) return -1;
+  if (ringContrast(gray, o, k) < 12) return -1;
+  return ratio * mean;
+}
+
+function ringContrast(gray, o, k) {
+  var poly = k(cv.matFromArray(4, 1, cv.CV_32SC2, [].concat.apply([], o.map(function (p) { return [Math.trunc(p.x), Math.trunc(p.y)]; }))));
+  var kk = k(cv.Mat.ones(25, 25, cv.CV_8U));
+  var mask = k(cv.Mat.zeros(gray.rows, gray.cols, cv.CV_8U));
+  cv.fillConvexPoly(mask, poly, new cv.Scalar(255));
+  var inner = k(new cv.Mat()); cv.erode(mask, inner, kk);
+  var ring = k(new cv.Mat()); cv.subtract(mask, inner, ring);
+  var grown = k(new cv.Mat()); cv.dilate(mask, grown, kk);
+  var out = k(new cv.Mat()); cv.subtract(grown, mask, out);
+  var a = hist(gray.data, ring.data), b = hist(gray.data, out.data);
+  if (!a.n || !b.n) return 999;
+  return Math.abs(pct(a, 0.5) - pct(b, 0.5));
+}
+
+// ------------------------------------------------------------------ 펴기 + 그림자 제거
+function warp(img, q) {
+  var tl = q[0], tr = q[1], br = q[2], bl = q[3];
+  var w = Math.max(10, Math.hypot(tr.x - tl.x, tr.y - tl.y), Math.hypot(br.x - bl.x, br.y - bl.y));
+  var h = Math.max(10, Math.hypot(bl.x - tl.x, bl.y - tl.y), Math.hypot(br.x - tr.x, br.y - tr.y));
+  w = Math.round(w); h = Math.round(h);
+  var s = cv.matFromArray(4, 1, cv.CV_32FC2, [tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y]);
+  var d = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, w - 1, 0, w - 1, h - 1, 0, h - 1]);
+  var M = cv.getPerspectiveTransform(s, d);
+  var out = new cv.Mat();
+  cv.warpPerspective(img, out, M, new cv.Size(w, h), cv.INTER_CUBIC);
+  s.delete(); d.delete(); M.delete();
+  return out;
+}
+
+function flatten(img) {
+  var ch = new cv.MatVector(); cv.split(img, ch);
+  var out = new cv.MatVector();
+  var sz = new cv.Size(Math.max(1, img.cols >> 2), Math.max(1, img.rows >> 2));
+  var k7 = cv.Mat.ones(7, 7, cv.CV_8U);
+  for (var i = 0; i < ch.size(); i++) {
+    var c = ch.get(i), sm = new cv.Mat(), bg = new cv.Mat(), f = new cv.Mat(), u = new cv.Mat();
+    cv.resize(c, sm, sz, 0, 0, cv.INTER_AREA);
+    cv.dilate(sm, sm, k7);
+    cv.medianBlur(sm, sm, 21);
+    cv.resize(sm, bg, new cv.Size(img.cols, img.rows), 0, 0, cv.INTER_LINEAR);
+    bg.convertTo(bg, cv.CV_32F);
+    var lo = new cv.Mat(bg.rows, bg.cols, cv.CV_32F, new cv.Scalar(30));
+    cv.max(bg, lo, bg);
+    c.convertTo(f, cv.CV_32F);
+    cv.divide(f, bg, f, 245);
+    f.convertTo(u, cv.CV_8U);
+    out.push_back(u);
+    [c, sm, bg, f, u, lo].forEach(function (m) { m.delete(); });
+  }
+  var merged = new cv.Mat(); cv.merge(out, merged);
+  ch.delete(); out.delete(); k7.delete();
+  return merged;
+}
+
+/** 캔버스(원본) → 펴고 그림자 지운 JPEG Blob. OpenCV 가 없으면 그대로 */
+function processCanvas(canvas) {
+  if (!cvReady) return toBlob(canvas);
+  var src = null, img = null;
+  try {
+    src = cv.imread(canvas);
+    var q = findDoc(src);
+    img = new cv.Mat(); cv.cvtColor(src, img, cv.COLOR_RGBA2RGB);
+    src.delete(); src = null;
+    if (q) { var w = warp(img, q); img.delete(); img = w; }
+    var flat = flatten(img); img.delete(); img = null;
+    var outC = document.createElement('canvas');
+    cv.imshow(outC, flat); flat.delete();
+    return toBlob(outC);
+  } catch (e) {
+    console.error(e);
+    if (src) src.delete(); if (img) img.delete();
+    return toBlob(canvas);
+  }
+}
+function toBlob(c) { return new Promise(function (ok) { c.toBlob(ok, 'image/jpeg', QUALITY); }); }
+function fit(w, h, long) { var s = Math.min(1, long / Math.max(w, h)); return { w: Math.round(w * s), h: Math.round(h * s) }; }
+
+// ------------------------------------------------------------------ 자동 연속 촬영 판단 (안드로이드 AutoShot 과 같음)
+var STEADY_MS = 900, STEADY_TOL = 0.025, FLICKER_MS = 300, GONE_MS = 500, MOVED = 0.12, COOLDOWN_MS = 1500;
+function AutoShot() {
+  this.state = 'SEARCHING'; this.shotTaken = false; this.nextSeen = true; this.lastShotAt = -COOLDOWN_MS;
+  this.lastShotQuad = null; this.steadyQuad = null; this.steadySince = 0; this.missingSince = 0;
+}
+AutoShot.prototype.canShoot = function (now) { return this.nextSeen && now - this.lastShotAt >= COOLDOWN_MS; };
+AutoShot.prototype.dist = function (a, b) { var s = 0; for (var i = 0; i < 4; i++) s += Math.hypot(a[i].x - b[i].x, a[i].y - b[i].y); return s / 4; };
+AutoShot.prototype.onFrame = function (q, now) {
+  if (!q) {
+    if (this.missingSince === 0) this.missingSince = now;
+    var gone = now - this.missingSince;
+    if (this.shotTaken && gone >= GONE_MS) this.nextSeen = true;
+    if (gone > FLICKER_MS) this.steadyQuad = null;
+    this.state = this.canShoot(now) ? 'SEARCHING' : 'WAIT_NEXT';
+    return false;
+  }
+  this.missingSince = 0;
+  if (this.shotTaken && !this.nextSeen) {
+    if (!this.lastShotQuad) this.lastShotQuad = q;
+    else if (this.dist(this.lastShotQuad, q) > MOVED) this.nextSeen = true;
+  }
+  if (!this.canShoot(now)) { this.steadyQuad = null; this.state = 'WAIT_NEXT'; return false; }
+  if (!this.steadyQuad || this.dist(this.steadyQuad, q) > STEADY_TOL) {
+    this.steadyQuad = q; this.steadySince = now; this.state = 'HOLDING'; return false;
+  }
+  this.state = 'HOLDING';
+  if (now - this.steadySince >= STEADY_MS) { this.markShot(q, now); return true; }
+  return false;
+};
+AutoShot.prototype.markShot = function (q, now) {
+  this.shotTaken = true; this.nextSeen = false; this.lastShotAt = now; this.lastShotQuad = q;
+  this.steadyQuad = null; this.missingSince = 0; this.state = 'WAIT_NEXT';
+};
+AutoShot.prototype.resetSteady = function () { this.steadyQuad = null; this.missingSince = 0; };
+
+// ------------------------------------------------------------------ 촬영 화면
+var stream = null, autoOn = true, shot = new AutoShot(), lastQuad = null, shots = 0, timer = null, diag = '카메라 준비 중', busy = 0;
+var video = $('video'), ov = $('ov');
+var small = document.createElement('canvas');
+
+function openCamera() {
+  if (!cvReady) { alert('스캔 기능을 아직 불러오는 중입니다. 잠시 뒤 다시 눌러 주세요.'); return; }
+  $('cam').hidden = false; $('home').hidden = true;
+  shots = 0; shot = new AutoShot(); lastQuad = null; showCount(); showHint();
+  var p = TEST ? testStream() : navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: { facingMode: { ideal: 'environment' }, width: { ideal: 3840 }, height: { ideal: 2880 } }
+  });
+  p.then(function (s) {
+    stream = s; video.srcObject = s;
+    return video.play();
+  }).then(function () {
+    var tr = stream.getVideoTracks()[0];
+    try { tr.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch (e) {}
+    loop();
+  }).catch(function (e) {
+    diag = '카메라를 열 수 없습니다: ' + (e && e.name ? e.name : e);
+    showHint();
+    alert('카메라를 열 수 없습니다. 설정에서 이 사이트의 카메라 접근을 허용해 주세요.\n(' + (e && e.message ? e.message : e) + ')');
+  });
+}
+
+function closeCamera() {
+  clearTimeout(timer); timer = null;
+  if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+  stream = null; video.srcObject = null;
+  $('cam').hidden = true; $('home').hidden = false;
+  render();
+}
+
+function loop() {
+  if (!stream) return;
+  var t0 = performance.now();
+  try { analyze(t0); } catch (e) { diag = '찾기 오류 - ' + e; }
+  var took = performance.now() - t0;
+  timer = setTimeout(loop, Math.max(30, 120 - took));
+}
+
+function analyze(now) {
+  var vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return;
+  var d = fit(vw, vh, 640);
+  small.width = d.w; small.height = d.h;
+  var g = small.getContext('2d', { willReadFrequently: true });
+  g.drawImage(video, 0, 0, d.w, d.h);
+  var t0 = performance.now();
+  var src = cv.imread(small), q = null;
+  try { q = findDoc(src); } finally { src.delete(); }
+  var took = Math.round(performance.now() - t0);
+  var norm = q ? q.map(function (p) { return { x: p.x / d.w, y: p.y / d.h }; }) : null;
+  diag = norm ? '테두리 찾음 (' + took + 'ms)' : '테두리 못 찾음 (' + took + 'ms)';
+  lastQuad = norm;
+  var shoot = autoOn && busy < 4 && shot.onFrame(norm, now);
+  var steady = autoOn && shot.state === 'HOLDING' && !!norm;
+  drawOverlay(norm, vw / vh, steady);
+  if (shoot) takeShot();
+  showHint();
+}
+
+function drawOverlay(q, aspect, steady) {
+  var r = ov.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  if (ov.width !== Math.round(r.width * dpr)) { ov.width = Math.round(r.width * dpr); ov.height = Math.round(r.height * dpr); }
+  var c = ov.getContext('2d'); c.clearRect(0, 0, ov.width, ov.height);
+  if (!q) return;
+  var W = ov.width, H = ov.height, w = Math.min(W, H * aspect), h = w / aspect, left = (W - w) / 2, top = (H - h) / 2;
+  var col = steady ? '46,204,113' : '61,139,253';
+  c.beginPath();
+  q.forEach(function (p, i) { var x = left + p.x * w, y = top + p.y * h; if (i) c.lineTo(x, y); else c.moveTo(x, y); });
+  c.closePath();
+  c.fillStyle = 'rgba(' + col + ',0.24)'; c.fill();
+  c.lineWidth = 4 * dpr; c.strokeStyle = 'rgb(' + col + ')'; c.stroke();
+}
+
+function takeShot() {
+  var vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw) return;
+  var d = fit(vw, vh, LONG_SIDE);
+  var c = document.createElement('canvas'); c.width = d.w; c.height = d.h;
+  c.getContext('2d').drawImage(video, 0, 0, d.w, d.h);
+  shots++; busy++; showCount();
+  $('flash').style.opacity = '0.7'; setTimeout(function () { $('flash').style.opacity = '0'; }, 120);
+  var takenAt = Date.now(), n = shots;
+  // 화면이 멈추지 않게 잠깐 뒤에 처리
+  setTimeout(function () {
+    processCanvas(c).then(function (blob) {
+      addBlob(blob, takenAt);
+      var u = URL.createObjectURL(blob); $('last').src = u; $('last').hidden = false;
+    }).finally(function () { busy--; showCount(); });
+  }, 30);
+}
+
+function showHint() {
+  var main;
+  if (!autoOn) main = '셔터를 누를 때마다 한 장씩 찍힙니다. 다 찍으면 ‘완료’.';
+  else if (shots > 0 && shot.state === 'WAIT_NEXT') main = '찍었습니다 (' + shots + '장). 다음 문서로 바꿔 주세요.';
+  else if (shot.state === 'HOLDING' && lastQuad) main = '문서를 찾았습니다. 그대로 잠깐 들고 계세요…';
+  else main = '문서를 화면에 비춰 주세요. 파란 테두리가 잡히면 저절로 찍습니다.';
+  $('hint').textContent = main + '\n[' + diag + ']';
+  $('auto').textContent = autoOn ? '자동: 켬' : '자동: 끔';
+}
+function showCount() { $('count').textContent = busy > 0 ? shots + '장 (처리 중)' : shots + '장'; }
+
+// 시험용 가짜 카메라: test.jpg 를 흔들며 보여줌
+function testStream() {
+  return new Promise(function (ok, bad) {
+    var img = new Image(); img.onload = function () {
+      var c = document.createElement('canvas'); c.width = 960; c.height = 1280;
+      var g = c.getContext('2d'), t = 0;
+      setInterval(function () {
+        t++; g.fillStyle = '#000'; g.fillRect(0, 0, c.width, c.height);
+        var off = (Math.floor(t / 40) % 2) ? 120 : 0;      // 4초마다 자리 바꾸기 (다음 문서)
+        g.drawImage(img, off - 60, 0, c.width, c.height);
+      }, 100);
+      ok(c.captureStream(10));
+    };
+    img.onerror = bad; img.src = 'test.jpg';
+  });
+}
+
+$('start').onclick = openCamera;
+$('done').onclick = closeCamera;
+$('shutter').onclick = function () { shot.markShot(lastQuad, performance.now()); takeShot(); showHint(); };
+$('auto').onclick = function () { autoOn = !autoOn; shot.resetSteady(); showHint(); };
+document.addEventListener('visibilitychange', function () { if (document.hidden && stream) closeCamera(); });
+
+// ------------------------------------------------------------------ 보관함 + 보내기
+function addBlob(blob, takenAt) {
+  items.push({ id: ++seq, blob: blob, url: URL.createObjectURL(blob), at: takenAt, status: 'wait', note: '' });
+  render();
+}
+
+$('pick').onchange = function (e) {
+  var files = Array.prototype.slice.call(e.target.files); e.target.value = '';
+  $('msg').className = 'msg'; $('msg').textContent = files.length + '장 정리 중…';
+  files.reduce(function (p, f) {
+    return p.then(function () {
+      return loadImage(f).then(function (img) {
+        var d = fit(img.naturalWidth, img.naturalHeight, LONG_SIDE);
+        var c = document.createElement('canvas'); c.width = d.w; c.height = d.h;
+        var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, d.w, d.h); g.drawImage(img, 0, 0, d.w, d.h);
+        return processCanvas(c);
+      }).then(function (blob) { addBlob(blob, f.lastModified || Date.now()); })
+        .catch(function (err) { console.error(err); });
+    });
+  }, Promise.resolve()).then(function () { $('msg').textContent = ''; });
+};
+function loadImage(f) {
+  return new Promise(function (ok, bad) {
+    var u = URL.createObjectURL(f), img = new Image();
+    img.onload = function () { URL.revokeObjectURL(u); ok(img); };
+    img.onerror = function () { URL.revokeObjectURL(u); bad(new Error('사진을 열 수 없습니다')); };
+    img.src = u;
+  });
+}
+
+function render() {
+  var g = $('grid'); g.innerHTML = '';
+  items.forEach(function (it) {
+    var d = document.createElement('div'); d.className = 'th';
+    var img = document.createElement('img'); img.src = it.url; img.alt = ''; d.appendChild(img);
+    if (!sending && it.status !== 'ok') {
+      var x = document.createElement('button'); x.className = 'x'; x.textContent = '×'; x.setAttribute('aria-label', '지우기');
+      x.onclick = function () { URL.revokeObjectURL(it.url); items = items.filter(function (o) { return o !== it; }); render(); };
+      d.appendChild(x);
+    }
+    var label = { wait: '', send: '보내는 중…', ok: '보냄', bad: '실패 — 다시 보내기' }[it.status];
+    if (label) {
+      var s = document.createElement('div'); s.className = 'st' + (it.status === 'ok' ? ' ok' : it.status === 'bad' ? ' bad' : '');
+      s.textContent = it.note || label; d.appendChild(s);
+    }
+    g.appendChild(d);
+  });
+  var left = items.filter(function (it) { return it.status === 'wait' || it.status === 'bad'; }).length;
+  var b = $('send');
+  b.disabled = sending || left === 0;
+  b.textContent = sending ? '보내는 중…' : left ? left + '장 모두 보내기' : '보낼 사진 없음';
+  $('clear').hidden = sending || items.length === 0;
+}
+
+function post(obj) {
+  // text/plain 으로 보내야 브라우저가 사전 확인(CORS) 없이 보냄
+  return fetch(API, { method: 'POST', body: JSON.stringify(obj), headers: { 'Content-Type': 'text/plain;charset=utf-8' } })
+    .then(function (r) { return r.json(); });
+}
+function b64(blob) {
+  return new Promise(function (ok, bad) {
+    var r = new FileReader(); r.onload = function () { ok(String(r.result).split(',')[1]); }; r.onerror = bad; r.readAsDataURL(blob);
+  });
+}
+function nameFor(it) {
+  var t = new Date(it.at || Date.now());
+  return 'scan_' + t.getFullYear() + pad(t.getMonth() + 1) + pad(t.getDate()) + '_' + pad(t.getHours()) + pad(t.getMinutes()) + pad(t.getSeconds()) +
+    '_web' + session + '_p' + it.id + '.jpg';
+}
+function sendOne(it) {
+  it.status = 'send'; it.note = ''; render();
+  return b64(it.blob)
+    .then(function (data) { return post({ token: KEY, name: nameFor(it), data: data }); })
+    .then(function (r) {
+      if (r && r.ok) { it.status = 'ok'; it.note = r.duplicate ? '이미 받음' : ''; }
+      else { it.status = 'bad'; it.note = '실패: ' + ((r && r.error) || '알 수 없음'); }
+    })
+    .catch(function (e) { it.status = 'bad'; it.note = '실패 — 다시 보내기'; console.error(e); })
+    .then(render);
+}
+function sendAll() {
+  var queue = items.filter(function (it) { return it.status === 'wait' || it.status === 'bad'; });
+  if (!queue.length) return;
+  sending = true; $('msg').className = 'msg'; $('msg').textContent = '보내는 중… (' + queue.length + '장, 3장씩 동시에)';
+  render();
+  var i = 0;
+  function worker() { return i < queue.length ? sendOne(queue[i++]).then(worker) : Promise.resolve(); }
+  var ws = []; for (var k = 0; k < Math.min(PARALLEL, queue.length); k++) ws.push(worker());
+  Promise.all(ws).then(function () {
+    sending = false;
+    var bad = queue.filter(function (it) { return it.status === 'bad'; }).length, m = $('msg');
+    if (bad) { m.className = 'msg bad'; m.textContent = (queue.length - bad) + '장 보냄, ' + bad + '장 실패. 인터넷을 확인하고 다시 눌러 주세요.'; }
+    else { m.className = 'msg ok'; m.textContent = queue.length + '장 전송 완료. 잠시 뒤 품번 폴더에 들어갑니다.'; setTimeout(loadRecent, 8000); }
+    render();
+  });
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function loadRecent() {
+  var r = $('recent'); r.textContent = '불러오는 중…';
+  post({ token: KEY, action: 'recent', n: 10 }).then(function (res) {
+    var rows = res && res.rows;
+    if (!rows || !rows.length) { r.textContent = res && res.ok === false ? '불러오지 못했습니다 (' + res.error + ')' : '아직 기록이 없습니다.'; return; }
+    var h = '<table><tr><th>처리시각</th><th>품번</th><th>검사일자</th></tr>';
+    rows.slice().reverse().forEach(function (row) {
+      h += '<tr><td>' + esc(row[0]) + '</td><td>' + esc(row[2] || '(미분류)') + '</td><td>' + esc(row[4] || '-') + '</td></tr>';
+    });
+    r.innerHTML = h + '</table>';
+  }).catch(function () { r.textContent = '불러오지 못했습니다.'; });
+}
+
+$('send').onclick = sendAll;
+$('clear').onclick = function () {
+  if (!confirm('목록의 사진을 모두 지울까요?')) return;
+  items.forEach(function (it) { URL.revokeObjectURL(it.url); }); items = []; $('msg').textContent = ''; render();
+};
+$('more').onclick = loadRecent;
+window.addEventListener('beforeunload', function (e) { if (sending || items.some(function (it) { return it.status !== 'ok'; })) { e.preventDefault(); e.returnValue = ''; } });
+render();
+</script>
+</body>
+</html>
