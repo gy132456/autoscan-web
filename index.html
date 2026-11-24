@@ -96,7 +96,7 @@
 <body>
 <main id="home">
   <h1>자동스캔</h1>
-  <p class="sub">성적서를 비추면 테두리를 찾아 자동으로 찍고, 보내면 고른 검사일자 폴더에 ‘품번_월.일’ 이름으로 저장됩니다.</p>
+  <p class="sub">성적서를 비추면 테두리를 찾아 자동으로 찍고, 보내면 검사일자 폴더에 ‘품번_월.일’ 이름으로 저장됩니다.</p>
   <div id="bad" class="msg bad" hidden>주소가 올바르지 않습니다. 관리자에게 받은 주소를 그대로 열어 주세요.</div>
 
   <label id="hdate" class="dpick"><span>검사일자 <b id="hdtxt"></b></span><small id="hdnote"></small><input type="date" id="insp" aria-label="검사일자"></label>
@@ -119,7 +119,7 @@
   <div class="card">
     <h2>사용법</h2>
     <ul>
-      <li><b>검사일자</b>를 먼저 확인하세요. 처음엔 오늘이고, 다른 날 성적서면 눌러서 바꿉니다. 이 날짜로 날짜 폴더에 저장되고 이름이 ‘품번_월.일’이 됩니다.</li>
+      <li><b>검사일자</b>: 성적서에 적힌 검사일자를 자동으로 읽어 그 날짜 폴더에 저장합니다. 읽기 어려우면 찍은 날짜로 저장됩니다. 특정 날짜로 저장하고 싶으면 위 검사일자를 눌러 바꾸세요(직접 고른 날짜가 우선).</li>
       <li>‘자동 스캔 시작’ → 문서를 비추면 파란 테두리가 잡히고, 초록으로 바뀌면 저절로 찍힙니다. <b>종이를 화면에 꽉 채우지 말고 네 귀퉁이 바깥이 조금 보이게</b> 찍어야 반듯하게 잘립니다.</li>
       <li>다음 문서로 바꾸면 버튼 없이 또 찍힙니다. 다 찍으면 ‘완료’ → ‘모두 보내기’.</li>
       <li>찍은 사진은 반듯하게 펴고 그림자를 지워서 보냅니다. 사진을 누르면 크게 보고, ‘모서리 조정’으로 고치거나 지울 수 있습니다.</li>
@@ -191,7 +191,7 @@ var A4_W = 1654, A4_H = 2339, DETECT_WORK = 1280;
 
 function $(id) { return document.getElementById(id); }
 function pad(n) { return (n < 10 ? '0' : '') + n; }
-// 검사일자: 찍을 때 사람이 고른 날짜 (손글씨를 읽지 않으므로 틀리지 않음). 열 때마다 오늘로 시작
+// 검사일자: 오늘(기본)이면 서버가 성적서의 검사일자를 읽어 씀(확실할 때만). 오늘이 아닌 날을 고르면 그 날짜가 우선. 열 때마다 오늘로 시작
 function ymd(t) { return t.getFullYear() + '-' + pad(t.getMonth() + 1) + '-' + pad(t.getDate()); }
 var inspDay = ymd(new Date());
 function inspOf(it) { var m = /_D(\d{4})(\d{2})(\d{2})/.exec(it.name || ''); return m ? m[2] + '.' + m[3] : ''; }
