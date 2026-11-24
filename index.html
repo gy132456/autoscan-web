@@ -113,7 +113,7 @@
     <h2>설정</h2>
     <label><input type="checkbox" id="set_instant"> 찍자마자 바로 보내기</label>
     <label><input type="checkbox" id="set_sound"> 찍을 때 소리</label>
-    <label><input type="checkbox" id="set_enhance"> 선명하게 자동 보정 (글자 또렷하게, 종이 하얗게)</label>
+    <label><input type="checkbox" id="set_enhance"> 선명하게 자동 보정 (볼펜 글씨 진하게, 종이·뒷면 비침 하얗게)</label>
   </div>
 
   <div class="card">
@@ -185,7 +185,9 @@ var API = 'https://script.google.com/macros/s/AKfycbzZmE_KpivdEsheJdkr7BxWnKPZsa
 var PARAMS = new URLSearchParams(location.hash.slice(1));
 var KEY = PARAMS.get('k') || '';
 var TEST = PARAMS.get('test') === '1';   // 시험용: 카메라 대신 test.jpg
-var PARALLEL = 6, LONG_SIDE = 2400, QUALITY = 0.85;
+var PARALLEL = 6, LONG_SIDE = 4096, QUALITY = 0.95, ORIG_SIDE = 3000, ORIG_QUALITY = 0.85;
+// 결과: A4 200dpi (세로 1654x2339). 찍힌 크기보다 키우지는 않음
+var A4_W = 1654, A4_H = 2339, DETECT_WORK = 1024;
 
 function $(id) { return document.getElementById(id); }
 function pad(n) { return (n < 10 ? '0' : '') + n; }
@@ -260,8 +262,8 @@ function pointsOf(m) {
   return out;
 }
 
-function findDoc(src) { // src: RGBA Mat → [좌상, 우상, 우하, 좌하] (src 픽셀) 또는 null
-  var s = Math.min(1, 640 / Math.max(src.cols, src.rows));
+function findDoc(src, work) { // src: RGBA Mat → [좌상, 우상, 우하, 좌하] (src 픽셀) 또는 null
+  var s = Math.min(1, (work || 640) / Math.max(src.cols, src.rows));
   var T = []; function k(m) { T.push(m); return m; }
   try {
     var small = k(new cv.Mat()); cv.resize(src, small, new cv.Size(0, 0), s, s, cv.INTER_AREA);
@@ -350,8 +352,11 @@ function score(gray, q, total, eb, W, H, k) {
     if (sign === 0) sign = Math.sign(cr); else if (Math.sign(cr) !== sign) return -1;
     area += a.x * b.y - b.x * a.y;
   }
+  // 꼭짓점이 화면 가장자리(2%)에 닿으면 종이 끝이 화면 밖일 수 있음 → 자르지 않음 (안쪽 표 선을 고르지 않게)
+  var mx = W * 0.02, my = H * 0.02;
+  if (o.some(function (p) { return p.x <= mx || p.x >= W - 1 - mx || p.y <= my || p.y >= H - 1 - my; })) return -1;
   var ratio = Math.abs(area) / 2 / total;
-  if (ratio < 0.12 || ratio > 0.98) return -1;
+  if (ratio < 0.12) return -1;
   // 각 60~120도
   for (i = 0; i < 4; i++) {
     var p = o[(i + 3) % 4], m = o[i], n = o[(i + 1) % 4];
@@ -389,7 +394,7 @@ function ringContrast(gray, o, k) {
   var grown = k(new cv.Mat()); cv.dilate(mask, grown, kk);
   var out = k(new cv.Mat()); cv.subtract(grown, mask, out);
   var a = hist(gray.data, ring.data), b = hist(gray.data, out.data);
-  if (!a.n || !b.n) return 999;
+  if (!a.n || !b.n) return -1; // 바깥을 못 봄 = 테두리 증거 없음
   return Math.abs(pct(a, 0.5) - pct(b, 0.5));
 }
 
@@ -398,71 +403,71 @@ function warp(img, q) {
   var tl = q[0], tr = q[1], br = q[2], bl = q[3];
   var w = Math.max(10, Math.hypot(tr.x - tl.x, tr.y - tl.y), Math.hypot(br.x - bl.x, br.y - bl.y));
   var h = Math.max(10, Math.hypot(bl.x - tl.x, bl.y - tl.y), Math.hypot(br.x - tr.x, br.y - tr.y));
-  w = Math.round(w); h = Math.round(h);
+  // A4 비율로 반듯하게 (세로/가로 문서 모두), 200dpi 상한
+  var aw = w > h ? A4_H : A4_W, ah = w > h ? A4_W : A4_H;
+  var sc = Math.min(1, Math.max(w / aw, h / ah));
+  w = Math.max(10, Math.round(aw * sc)); h = Math.max(10, Math.round(ah * sc));
   var s = cv.matFromArray(4, 1, cv.CV_32FC2, [tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y]);
   var d = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, w - 1, 0, w - 1, h - 1, 0, h - 1]);
   var M = cv.getPerspectiveTransform(s, d);
   var out = new cv.Mat();
-  cv.warpPerspective(img, out, M, new cv.Size(w, h), cv.INTER_CUBIC);
+  cv.warpPerspective(img, out, M, new cv.Size(w, h), cv.INTER_CUBIC, cv.BORDER_REPLICATE);
   s.delete(); d.delete(); M.delete();
   return out;
 }
 
-function flatten(img) {
-  var ch = new cv.MatVector(); cv.split(img, ch);
-  var out = new cv.MatVector();
-  var sz = new cv.Size(Math.max(1, img.cols >> 2), Math.max(1, img.rows >> 2));
-  var k7 = cv.Mat.ones(7, 7, cv.CV_8U);
-  for (var i = 0; i < ch.size(); i++) {
-    var c = ch.get(i), sm = new cv.Mat(), bg = new cv.Mat(), f = new cv.Mat(), u = new cv.Mat();
-    cv.resize(c, sm, sz, 0, 0, cv.INTER_AREA);
-    cv.dilate(sm, sm, k7);
+/** 보정 (밝기 채널만 바꿔서 펜·도장 색은 유지)
+ *  1) 종이 배경 밝기로 나눔 → 그림자·조명 얼룩 제거
+ *  2) strong=true: 검정점(하위 1%)~흰점(228) 늘리기 + 감마 1.35 + 약한 언샤프 → 연한 볼펜 진하게, 뒷면 비침 하얗게 */
+function flatten(img, strong) {
+  var T = []; function k(m) { T.push(m); return m; }
+  try {
+    var lab = k(new cv.Mat()); cv.cvtColor(img, lab, cv.COLOR_RGB2Lab);
+    var ch = k(new cv.MatVector()); cv.split(lab, ch);
+    var L = k(ch.get(0)), A = k(ch.get(1)), B = k(ch.get(2));
+    var sm = k(new cv.Mat()); cv.resize(L, sm, new cv.Size(Math.max(1, img.cols >> 2), Math.max(1, img.rows >> 2)), 0, 0, cv.INTER_AREA);
+    cv.dilate(sm, sm, k(cv.Mat.ones(7, 7, cv.CV_8U)));
     cv.medianBlur(sm, sm, 21);
-    cv.resize(sm, bg, new cv.Size(img.cols, img.rows), 0, 0, cv.INTER_LINEAR);
+    var bg = k(new cv.Mat()); cv.resize(sm, bg, new cv.Size(img.cols, img.rows), 0, 0, cv.INTER_LINEAR);
     bg.convertTo(bg, cv.CV_32F);
-    var lo = new cv.Mat(bg.rows, bg.cols, cv.CV_32F, new cv.Scalar(30));
-    cv.max(bg, lo, bg);
-    c.convertTo(f, cv.CV_32F);
-    cv.divide(f, bg, f, 245);
-    f.convertTo(u, cv.CV_8U);
-    out.push_back(u);
-    [c, sm, bg, f, u, lo].forEach(function (m) { m.delete(); });
+    cv.max(bg, k(new cv.Mat(bg.rows, bg.cols, cv.CV_32F, new cv.Scalar(30))), bg);
+    var f = k(new cv.Mat()); L.convertTo(f, cv.CV_32F);
+    cv.divide(f, bg, f, 255);
+    var n8 = k(new cv.Mat()); f.convertTo(n8, cv.CV_8U);
+    var d = n8.data, i;
+    if (strong) {
+      var hc = new Uint32Array(256); for (i = 0; i < d.length; i++) hc[d[i]]++;
+      var acc = 0, black = 0, target = d.length * 0.01;
+      for (i = 0; i < 256; i++) { acc += hc[i]; if (acc >= target) { black = i; break; } }
+      black = Math.min(120, black);
+      var white = Math.max(228, black + 40), lut = new Uint8Array(256);
+      for (i = 0; i < 256; i++) lut[i] = Math.round(255 * Math.pow(Math.min(1, Math.max(0, (i - black) / (white - black))), 1.35));
+      for (i = 0; i < d.length; i++) d[i] = lut[d[i]];
+      var bl = k(new cv.Mat()); cv.GaussianBlur(n8, bl, new cv.Size(0, 0), 1.0);
+      cv.addWeighted(n8, 1.6, bl, -0.6, 0, n8);
+    }
+    var mv = k(new cv.MatVector()); mv.push_back(n8); mv.push_back(A); mv.push_back(B);
+    var merged = k(new cv.Mat()); cv.merge(mv, merged);
+    var out = new cv.Mat(); cv.cvtColor(merged, out, cv.COLOR_Lab2RGB);
+    return out;
+  } finally {
+    T.forEach(function (m) { try { m.delete(); } catch (e) {} });
   }
-  var merged = new cv.Mat(); cv.merge(out, merged);
-  ch.delete(); out.delete(); k7.delete();
-  return merged;
 }
 
 /** 캔버스 → 문서 네 모서리 (0~1 비율, [좌상,우상,우하,좌하]) 또는 null */
 function detectQuad(canvas) {
   if (!cvReady) return null;
-  // 큰 사진을 통째로 읽지 않고 640 으로 줄인 뒤 찾음 (어차피 findDoc 안에서 640 으로 줄임 → 결과 같고 훨씬 빠름)
-  var s = Math.min(1, 640 / Math.max(canvas.width, canvas.height));
+  // 큰 사진을 통째로 읽지 않고 DETECT_WORK 로 줄인 뒤 찾음 (종이 끝과 표 선을 구분할 만큼 크게)
+  var s = Math.min(1, DETECT_WORK / Math.max(canvas.width, canvas.height));
   var sm = canvas;
   if (s < 1) {
     sm = document.createElement('canvas'); sm.width = Math.round(canvas.width * s); sm.height = Math.round(canvas.height * s);
     var g = sm.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(canvas, 0, 0, sm.width, sm.height);
   }
   var src = cv.imread(sm), q = null;
-  try { q = findDoc(src); } catch (e) { console.error(e); } finally { src.delete(); }
+  try { q = findDoc(src, DETECT_WORK); } catch (e) { console.error(e); } finally { src.delete(); }
   return q ? q.map(function (p) { return { x: p.x / sm.width, y: p.y / sm.height }; }) : null;
-}
-
-/** 선명하게 자동 보정 (그 자리에서 고침): 언샤프 마스크로 글자 윤곽을 또렷하게 + 종이는 하얗게, 글자는 조금 더 진하게.
- *  손글씨가 깨지지 않도록 세기는 약하게. */
-var ENH_LUT = (function () {
-  var t = new Uint8Array(256);
-  for (var i = 0; i < 256; i++) t[i] = Math.round(255 * Math.pow(Math.min(1, i / 238), 1.3));
-  return t;
-})();
-function enhance(img) {
-  var blur = new cv.Mat();
-  cv.GaussianBlur(img, blur, new cv.Size(0, 0), 1.3);
-  cv.addWeighted(img, 1.7, blur, -0.7, 0, img);
-  blur.delete();
-  var d = img.data;
-  for (var i = 0; i < d.length; i++) d[i] = ENH_LUT[d[i]];
-  return img;
 }
 
 /** 캔버스(원본) + 모서리(비율, null 이면 펴지 않음) → 펴고 그림자 지운 JPEG Blob */
@@ -476,9 +481,12 @@ function renderOut(canvas, q) {
     if (q) {
       var px = q.map(function (p) { return { x: p.x * canvas.width, y: p.y * canvas.height }; });
       var w = warp(img, px); img.delete(); img = w;
+    } else {
+      // 테두리를 못 찾았으면 자르지 않고 화면 전체 (긴 변만 A4 200dpi 수준으로)
+      var r = Math.min(1, A4_H / Math.max(img.cols, img.rows));
+      if (r < 1) { var rs = new cv.Mat(); cv.resize(img, rs, new cv.Size(0, 0), r, r, cv.INTER_AREA); img.delete(); img = rs; }
     }
-    var flat = flatten(img); img.delete(); img = null;
-    if (setting('enhance')) enhance(flat);
+    var flat = flatten(img, setting('enhance')); img.delete(); img = null;
     var outC = document.createElement('canvas');
     cv.imshow(outC, flat); flat.delete();
     return toBlob(outC);
@@ -494,12 +502,20 @@ function processShot(canvas) {
   return (cvReady ? Promise.resolve() : cvWait).then(function () {
     var q = null;
     try { q = detectQuad(canvas); } catch (e) { console.error(e); }
-    return Promise.all([toBlob(canvas), renderOut(canvas, q)]).then(function (r) {
+    return Promise.all([origBlob(canvas), renderOut(canvas, q)]).then(function (r) {
       return { orig: r[0], quad: q, blob: r[1] };
     });
   });
 }
-function toBlob(c) { return new Promise(function (ok) { c.toBlob(ok, 'image/jpeg', QUALITY); }); }
+function toBlob(c, qual) { return new Promise(function (ok) { c.toBlob(ok, 'image/jpeg', qual || QUALITY); }); }
+function origBlob(c) {
+  var d = fit(c.width, c.height, ORIG_SIDE);
+  if (d.w !== c.width) {
+    var o = document.createElement('canvas'); o.width = d.w; o.height = d.h;
+    var g = o.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(c, 0, 0, d.w, d.h); c = o;
+  }
+  return toBlob(c, ORIG_QUALITY);
+}
 function blobToCanvas(blob) {
   return new Promise(function (ok, bad) {
     var u = URL.createObjectURL(blob), img = new Image();
