@@ -321,16 +321,57 @@ function findDoc(src, work) { // src: RGBA Mat → [좌상, 우상, 우하, 좌�
     // 고르기
     var edge = k(new cv.Mat()); cv.Canny(blur, edge, 20, 60);
     var k9b = k(cv.Mat.ones(9, 9, cv.CV_8U)); cv.dilate(edge, edge, k9b);
-    var best = null, bestScore = -1;
+    var valid = [];
     cands.forEach(function (q) {
       var sc = score(gray, q, total, edge.data, W, H, k);
-      if (sc > bestScore) { bestScore = sc; best = q; }
+      if (sc > 0) valid.push({ q: order(q), sc: sc, area: polyArea(order(q)) });
     });
-    if (!best) return null;
+    if (!valid.length) return null;
+    valid.sort(function (a, b) { return b.sc - a.sc; });
+    var best = pickInner(gray, valid, k).q;
     return order(best.map(function (p) { return { x: p.x / s, y: p.y / s }; }));
   } finally {
     T.forEach(function (m) { try { m.delete(); } catch (e) {} });
   }
+}
+
+function polyArea(o) {
+  var a = 0; for (var i = 0; i < 4; i++) { var p = o[i], q = o[(i + 1) % 4]; a += p.x * q.y - q.x * p.y; }
+  return Math.abs(a) / 2;
+}
+function inPoly(o, p) { // 볼록 사각형 안에 있는지
+  var sign = 0;
+  for (var i = 0; i < 4; i++) {
+    var a = o[i], b = o[(i + 1) % 4], cr = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+    if (cr !== 0) { if (!sign) sign = Math.sign(cr); else if (Math.sign(cr) !== sign) return false; }
+  }
+  return true;
+}
+function polyMask(gray, o, k) {
+  var m = k(cv.Mat.zeros(gray.rows, gray.cols, cv.CV_8U));
+  var poly = k(cv.matFromArray(4, 1, cv.CV_32SC2, [].concat.apply([], o.map(function (p) { return [Math.round(p.x), Math.round(p.y)]; }))));
+  cv.fillConvexPoly(m, poly, new cv.Scalar(255));
+  return m;
+}
+/** 가장 점수 높은 사각형 안에 '더 밝은 사각형'(매트·책상 위의 종이)이 들어 있으면 안쪽을 고름. 여러 겹이면 반복 */
+function pickInner(gray, valid, k) {
+  var best = valid[0];
+  for (var guard = 0; guard < 4; guard++) {
+    var next = null;
+    for (var i = 0; i < valid.length; i++) {
+      var c = valid[i];
+      if (c === best || c.area < best.area * 0.2 || c.area > best.area * 0.92) continue;
+      if (!c.q.every(function (p) { return inPoly(best.q, p); })) continue;
+      var mi = polyMask(gray, c.q, k), mo = polyMask(gray, best.q, k);
+      cv.subtract(mo, mi, mo); // 큰 사각형에서 안쪽을 뺀 둘레
+      var a = hist(gray.data, mi.data), b = hist(gray.data, mo.data);
+      if (!a.n || !b.n || pct(a, 0.5) - pct(b, 0.5) < 15) continue;
+      if (!next || c.area > next.area) next = c;
+    }
+    if (!next) break;
+    best = next;
+  }
+  return best;
 }
 
 function topContours(cs, n, k) {
@@ -381,7 +422,37 @@ function score(gray, q, total, eb, W, H, k) {
   var mean = sum / 4;
   if (worst < 0.35 || mean < 0.7) return -1;
   if (ringContrast(gray, o, k) < 12) return -1;
+  // 변마다 안쪽(종이)이 바깥보다 밝아야 종이: 3변 이상 확실히 밝고(10 이상), 어느 변도 크게 어둡지 않게(-15 이상)
+  // (카펫·책상 전체를 종이로 착각하지 않게. 표 선이 가장자리에 붙은 한 변은 봐줌)
+  var sides = sideContrast(gray.data, o, W, H);
+  if (!sides) return -1;
+  var bright = sides.filter(function (v) { return v >= SIDE_MIN; }).length;
+  if (bright < 3 || Math.min.apply(null, sides) < -15) return -1;
   return ratio * mean;
+}
+
+var SIDE_MIN = 10;
+/** 네 변 각각의 '바로 안쪽 - 바로 바깥' 밝기 차이(중앙값) 배열. 바깥을 못 보면 null */
+function sideContrast(g, o, W, H) {
+  var cx = (o[0].x + o[1].x + o[2].x + o[3].x) / 4, cy = (o[0].y + o[1].y + o[2].y + o[3].y) / 4;
+  var d = Math.max(4, Math.round(Math.max(W, H) * 0.012)), res = [];
+  function at(x, y) { x = Math.round(x); y = Math.round(y); return (x < 0 || y < 0 || x >= W || y >= H) ? -1 : g[y * W + x]; }
+  function med(a) { a.sort(function (p, q) { return p - q; }); return a[a.length >> 1]; }
+  for (var i = 0; i < 4; i++) {
+    var A = o[i], B = o[(i + 1) % 4], ex = B.x - A.x, ey = B.y - A.y, len = Math.hypot(ex, ey) || 1;
+    var nx = -ey / len, ny = ex / len;
+    var mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2;
+    if ((cx - mx) * nx + (cy - my) * ny < 0) { nx = -nx; ny = -ny; }   // 법선이 안쪽을 향하게
+    var ins = [], outs = [];
+    for (var j = 0; j < 24; j++) {
+      var t = 0.15 + 0.7 * j / 23, px = A.x + ex * t, py = A.y + ey * t;
+      var a = at(px + nx * d, py + ny * d), b = at(px - nx * d, py - ny * d);
+      if (a >= 0 && b >= 0) { ins.push(a); outs.push(b); }
+    }
+    if (ins.length < 8) return null;
+    res.push(med(ins) - med(outs));
+  }
+  return res;
 }
 
 function ringContrast(gray, o, k) {
