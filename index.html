@@ -588,7 +588,11 @@ function detectQuad(canvas) {
     var g = sm.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(canvas, 0, 0, sm.width, sm.height);
   }
   var src = cv.imread(sm), q = null;
-  try { q = findDoc(src, DETECT_WORK); } catch (e) { console.error(e); } finally { src.delete(); }
+  try {
+    q = findDoc(src, DETECT_WORK);
+    // 못 찾으면 미리보기와 같은 크기(640)로 한 번 더 (큰 사진에서는 책상 결·빛 반사 때문에 놓칠 때가 있음)
+    if (!q) q = findDoc(src, 640);
+  } catch (e) { console.error(e); } finally { src.delete(); }
   return q ? q.map(function (p) { return { x: p.x / sm.width, y: p.y / sm.height }; }) : null;
 }
 
@@ -608,7 +612,7 @@ function enhanceDoc(img, mode) {
  * SIMD rounding. Filters.kt duplicates these kernels exactly. No DOM required.
  */
 function enhanceDocRGBA(rgbaMat, mode) {
-  var LOCR = 4, BLO = 150, BHI = 235, PF = 200; // 흑백 지역 배경 창(폭의 0.4%), 흑백 곡선, 종이 바닥 밝기
+  var LOCR = 4, BLO = 150, BHI = 235, PF = 200, SPL = 195, SPM = 230, BGN = 384, CLR = 4, BXR = 3, BXP = 2; // 흑백 지역 창·곡선, 종이 바닥, 얼룩 지우기, 배경 추정(해상도·닫기·흐리기)
   var src = null, out = null, success = false;
   function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
   function roundDiv(n, d) { return Math.floor((n + Math.floor(d / 2)) / d); }
@@ -664,10 +668,10 @@ function enhanceDocRGBA(rgbaMat, mode) {
     // clone also makes non-contiguous ROIs safe. It is the only temporary Mat.
     src = rgbaMat.clone();
     var w = src.cols, h = src.rows, count = w * h;
-    var step = Math.max(1, Math.ceil(Math.max(w, h) / 384));
+    var step = Math.max(1, Math.ceil(Math.max(w, h) / BGN));
     var sw = Math.ceil(w / step), sh = Math.ceil(h / step);
     var small = new Uint8Array(sw * sh * 3), input = src.data;
-    var x, y, sx, sy, xx, yy, c, i, p, r, g, b, v, sum, n;
+    var x, y, sx, sy, xx, yy, c, i, p, r, g, b, v, sum, n, k;
     // Exact block-area downsampling (last block may be shorter).
     for (sy = 0; sy < sh; sy++) for (sx = 0; sx < sw; sx++) {
       var sr = 0, sg = 0, sb = 0; n = 0;
@@ -679,8 +683,8 @@ function enhanceDocRGBA(rgbaMat, mode) {
       small[p] = roundDiv(sr, n); small[p + 1] = roundDiv(sg, n); small[p + 2] = roundDiv(sb, n);
     }
     // Close 15x15 removes strokes up to about 84 px at A4/200dpi.
-    var bg = morph(morph(small, sw, sh, 7, true), sw, sh, 7, false);
-    for (i = 0; i < 3; i++) bg = box(bg, sw, sh, 5);
+    var bg = morph(morph(small, sw, sh, CLR, true), sw, sh, CLR, false);
+    for (i = 0; i < BXP; i++) bg = box(bg, sw, sh, BXR);
     var x0 = new Int32Array(w), x1 = new Int32Array(w), fx = new Int32Array(w);
     for (x = 0; x < w; x++) {
       v = clamp(Math.floor(((2 * x + 1) * sw * 128) / w) - 128, 0, (sw - 1) * 256);
@@ -718,7 +722,7 @@ function enhanceDocRGBA(rgbaMat, mode) {
     sum = 0; var black = 0, target = Math.ceil(count / 200);
     for (i = 0; i < 256; i++) { sum += hist[i]; if (sum >= target) { black = Math.min(32, i); break; } }
     var lut = new Uint8Array(256), white = mode === 'gray' ? 249 : 244;
-    var bend = mode === 'gray' ? 28 : 64;
+    var bend = mode === 'gray' ? 40 : 100;
     for (i = 0; i < 256; i++) {
       v = clamp(roundDiv((i - black) * 255, white - black), 0, 255);
       lut[i] = clamp(v - roundDiv(bend * v * (255 - v), 65025), 0, 255);
@@ -770,6 +774,21 @@ function enhanceDocRGBA(rgbaMat, mode) {
         dst[p] = dst[p + 1] = dst[p + 2] = v;
       }
       luma[i] = lum(dst[p], dst[p + 1], dst[p + 2]);
+    }
+    if (mode !== 'bw') {
+      // speckle floor: in paper areas (5x5 mean >= SPM) whiten leftover shadow grain (pixel >= SPL, low chroma)
+      var rowS = new Uint32Array(count), touched = new Uint8Array(count), m5;
+      for (y = 0; y < h; y++) { sum = 0; for (k = -2; k <= 2; k++) sum += luma[y * w + clamp(k, 0, w - 1)];
+        for (x = 0; x < w; x++) { rowS[y * w + x] = sum; sum += luma[y * w + clamp(x + 3, 0, w - 1)] - luma[y * w + clamp(x - 2, 0, w - 1)]; } }
+      for (x = 0; x < w; x++) { sum = 0; for (k = -2; k <= 2; k++) sum += rowS[clamp(k, 0, h - 1) * w + x];
+        for (y = 0; y < h; y++) { i = y * w + x; m5 = roundDiv(sum, 25);
+          sum += rowS[clamp(y + 3, 0, h - 1) * w + x] - rowS[clamp(y - 2, 0, h - 1) * w + x];
+          v = luma[i]; if (v >= 255 || v < SPL || m5 < SPM) continue;
+          p = i * 4; if (Math.max(dst[p], dst[p + 1], dst[p + 2]) - Math.min(dst[p], dst[p + 1], dst[p + 2]) > 45) continue;
+          var ts = clamp(roundDiv((v - SPL) * 256, 30), 0, 256);
+          for (c = 0; c < 3; c++) dst[p + c] = dst[p + c] + roundDiv((255 - dst[p + c]) * ts, 256);
+          touched[i] = 1; } }
+      for (i = 0; i < count; i++) if (touched[i]) { p = i * 4; luma[i] = lum(dst[p], dst[p + 1], dst[p + 2]); }
     }
     // Dark-side-only cross unsharp: radius 1, 0.30, deadband 2, max darkening 6.
     // No bright overshoot; does not amplify blank-paper grain.
@@ -828,10 +847,12 @@ function renderOut(canvas, q, mode, rot) {
 }
 
 /** 찍은 사진 → { orig: 원본 JPEG, quad: 찾은 모서리, blob: 보정본 } (모서리 조정 때 원본에서 다시 만듦) */
-function processShot(canvas) {
+function processShot(canvas, hint) {
   return (cvReady ? Promise.resolve() : cvWait).then(function () {
     var q = null;
     try { q = detectQuad(canvas); } catch (e) { console.error(e); }
+    // 그래도 못 찾으면 찍는 순간 미리보기에서 잡혀 있던 테두리를 씀 (사진과 화면 비율이 같을 때만)
+    if (!q && hint && Math.abs(hint.aspect - canvas.width / canvas.height) < 0.02) q = hint.q;
     var mode = settingStr('filter');
     return Promise.all([origBlob(canvas), renderOut(canvas, q, mode, 0)]).then(function (r) {
       return { orig: r[0], quad: q, blob: r[1], filter: mode, rot: 0 };
@@ -986,9 +1007,10 @@ function takeShot() {
   shots++; busy++; showCount(); shutterFx();
   $('flash').style.opacity = '0.7'; setTimeout(function () { $('flash').style.opacity = '0'; }, 120);
   var takenAt = Date.now();
+  var hint = lastQuad ? { q: lastQuad.map(function (p) { return { x: p.x, y: p.y }; }), aspect: vw / vh } : null;
   // 화면이 멈추지 않게 잠깐 뒤에 처리. 사진 기능(아이폰 iOS 18.4~)이 되면 영상 대신 고화질 사진을 씀
   setTimeout(function () {
-    grabStill(c).then(processShot).then(function (r) {
+    grabStill(c).then(function (cc) { return processShot(cc, hint); }).then(function (r) {
       var it = addItem(r, takenAt); camItems.push(it);
       $('last').src = it.url; $('last').hidden = false;
       if (setting('instant')) enqueue([it]);
