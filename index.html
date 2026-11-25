@@ -7,175 +7,266 @@
 <meta name="robots" content="noindex">
 <title>자동스캔</title>
 <style>
-  :root { --bg:#f5f6f8; --card:#fff; --ink:#1d2330; --sub:#5d6675; --line:#dfe3ea; --pri:#2f6fe4; --ok:#1f9d55; --bad:#d64545; }
+  :root { --bg:#f2f4f5; --card:#fff; --ink:#1b2126; --sub:#66707a; --line:#e1e5e8; --pri:#15a57e; --pri2:#0f8a69; --ok:#15a57e; --bad:#d64545; --warn:#e8890c; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#111418; --card:#1b2027; --ink:#e8ecf2; --sub:#9aa4b3; --line:#2c333d; --pri:#5b8ef0; --ok:#3cc47a; --bad:#f06a6a; }
+    :root { --bg:#0f1214; --card:#1a1f23; --ink:#e9edf0; --sub:#9aa5ad; --line:#2a3137; --pri:#2cc596; --pri2:#22a67e; --ok:#2cc596; --bad:#f06a6a; }
   }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   [hidden] { display:none !important; }
-  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
-  main { max-width:560px; margin:0 auto; padding:16px; }
-  h1 { font-size:22px; margin:8px 0 4px; }
-  .sub { color:var(--sub); font-size:14px; margin:0 0 16px; }
-  button, label.btn { display:flex; align-items:center; justify-content:center; min-height:52px; border-radius:12px; border:0;
-    font-family:inherit; font-size:16px; font-weight:600; line-height:1.2; cursor:pointer; padding:0 12px; text-align:center; }
-  .pri { background:var(--pri); color:#fff; width:100%; min-height:60px; font-size:18px; }
-  label.btn.alt { background:var(--card); color:var(--pri); border:1.5px solid var(--pri); margin-top:10px; }
+  html, body { background:var(--bg); }
+  body { margin:0; color:var(--ink); font:16px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+  button, label.btn { display:flex; align-items:center; justify-content:center; gap:6px; border:0; font-family:inherit; font-size:16px; font-weight:600; line-height:1.2; cursor:pointer; padding:0 12px; text-align:center; color:inherit; background:none; }
   input[type=file] { display:none; }
-  #send { width:100%; margin-top:16px; background:var(--ok); color:#fff; }
-  #send:disabled { opacity:.45; cursor:default; }
-  #clear { width:100%; margin-top:8px; background:transparent; color:var(--sub); min-height:40px; font-weight:500; }
-  .grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-top:16px; }
-  .th { position:relative; aspect-ratio:3/4; border-radius:10px; overflow:hidden; background:var(--card); border:1px solid var(--line); }
-  .th img { width:100%; height:100%; object-fit:cover; display:block; }
-  .th .x { position:absolute; top:4px; right:4px; width:30px; height:30px; min-height:0; border-radius:50%; padding:0; background:rgba(0,0,0,.6); color:#fff; font-size:18px; }
-  .th .st { position:absolute; left:0; right:0; bottom:0; padding:4px 6px; font-size:12px; font-weight:600; color:#fff; background:rgba(0,0,0,.55); }
-  .th .st.ok { background:var(--ok); } .th .st.bad { background:var(--bad); }
-  .msg { margin-top:12px; min-height:24px; font-weight:600; }
+  svg.i { width:24px; height:24px; flex:0 0 auto; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+
+  /* 위 막대 */
+  .appbar { position:sticky; top:0; z-index:5; display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:calc(env(safe-area-inset-top) + 10px) 16px 10px; background:var(--pri); color:#fff; }
+  .brand { display:flex; align-items:center; gap:8px; font-size:20px; font-weight:800; letter-spacing:-.3px; white-space:nowrap; }
+  /* 검사일자 고르기: 투명한 날짜 칸을 위에 덮어 누르면 바로 달력이 열림 */
+  .dpick { position:relative; display:flex; align-items:center; justify-content:center; gap:8px; overflow:hidden; cursor:pointer; white-space:nowrap; }
+  .dpick input { position:absolute; inset:0; width:100%; height:100%; opacity:0; border:0; margin:0; padding:0; cursor:pointer; -webkit-appearance:none; appearance:none; }
+  .brand .logo { width:30px; height:30px; border-radius:8px; background:#fff; color:var(--pri); display:flex; align-items:center; justify-content:center; }
+  .brand .logo svg { width:20px; height:20px; }
+  #hdate { flex-direction:column; align-items:flex-end; gap:0; padding:4px 12px; min-height:44px; border-radius:22px; background:rgba(255,255,255,.18); color:#fff; font-size:15px; font-weight:700; }
+  #hdate small { font-size:11px; font-weight:600; opacity:.85; }
+  #hdate.other { background:var(--warn); }
+
+  main { max-width:620px; margin:0 auto; padding:12px 16px calc(env(safe-area-inset-bottom) + 120px); }
+  .msg { margin-top:10px; min-height:0; font-weight:600; font-size:15px; }
+  .msg:empty { margin:0; }
   .msg.ok { color:var(--ok); } .msg.bad { color:var(--bad); }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-top:20px; }
-  .card h2 { font-size:16px; margin:0 0 8px; }
+  #bad { padding:12px; border-radius:12px; background:#fdeaea; }
+  #cvstate { font-size:12px; color:var(--sub); text-align:center; margin:4px 0 0; }
+
+  /* 빈 화면 */
+  .empty { text-align:center; color:var(--sub); padding:56px 16px 32px; }
+  .empty .pic { width:96px; height:96px; margin:0 auto 14px; border-radius:24px; background:var(--card); border:1px solid var(--line); display:flex; align-items:center; justify-content:center; color:var(--pri); }
+  .empty .pic svg { width:52px; height:52px; stroke-width:1.6; }
+  .empty b { display:block; color:var(--ink); font-size:17px; margin-bottom:4px; }
+  .empty small { font-size:14px; }
+
+  /* 문서 목록 */
+  .secthead { display:flex; align-items:center; justify-content:space-between; margin:6px 2px 8px; }
+  .secthead b { font-size:15px; }
+  .secthead .link { color:var(--sub); font-size:14px; font-weight:500; min-height:36px; padding:0 4px; }
+  .grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
+  .th { position:relative; aspect-ratio:3/4; border-radius:10px; overflow:hidden; background:var(--card); box-shadow:0 1px 3px rgba(0,0,0,.12); }
+  .th img { width:100%; height:100%; object-fit:cover; display:block; cursor:pointer; }
+  .th .no { position:absolute; left:6px; bottom:6px; min-width:22px; height:22px; padding:0 6px; border-radius:11px; background:rgba(0,0,0,.6); color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .th .x { position:absolute; top:5px; right:5px; width:28px; height:28px; border-radius:50%; padding:0; background:rgba(0,0,0,.55); color:#fff; font-size:17px; }
+  .th .dt { position:absolute; top:5px; left:5px; padding:2px 7px; border-radius:10px; font-size:11px; font-weight:700; color:#fff; background:rgba(0,0,0,.55); }
+  .th .st { position:absolute; left:0; right:0; bottom:0; padding:4px 6px; font-size:12px; font-weight:600; color:#fff; background:rgba(0,0,0,.6); }
+  .th .st.ok { background:var(--ok); } .th .st.bad { background:var(--bad); }
+
+  /* 카드 (설정·사용법·최근 결과) */
+  details.card { background:var(--card); border-radius:12px; margin-top:12px; box-shadow:0 1px 2px rgba(0,0,0,.06); }
+  details.card summary { list-style:none; display:flex; align-items:center; justify-content:space-between; padding:14px 16px; font-weight:700; cursor:pointer; }
+  details.card summary::-webkit-details-marker { display:none; }
+  details.card summary::after { content:'›'; font-size:22px; color:var(--sub); transform:rotate(90deg); transition:transform .15s; }
+  details.card[open] summary::after { transform:rotate(-90deg); }
+  details.card > div { padding:0 16px 14px; }
   .card ul { margin:0; padding-left:18px; color:var(--sub); font-size:14px; }
+  .set label { display:flex; align-items:center; gap:10px; min-height:42px; font-size:15px; }
+  .set input[type=checkbox] { width:22px; height:22px; accent-color:var(--pri); }
+  .set select { font:inherit; font-size:15px; padding:6px 8px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--ink); }
   table { width:100%; border-collapse:collapse; font-size:13px; }
   td, th { text-align:left; padding:6px 4px; border-top:1px solid var(--line); vertical-align:top; word-break:break-all; }
   th { color:var(--sub); font-weight:600; border-top:0; }
-  #more { width:100%; margin-top:8px; background:transparent; color:var(--pri); border:1px solid var(--line); min-height:44px; }
-  #cvstate { font-size:13px; color:var(--sub); margin-top:8px; }
+  #more { width:100%; margin-top:8px; color:var(--pri); border:1px solid var(--line); border-radius:10px; min-height:44px; }
+
+  /* 아래 막대: 앨범 · 카메라 · 보내기 */
+  #dock { position:fixed; left:0; right:0; bottom:0; z-index:6; display:grid; grid-template-columns:1fr 92px 1fr; align-items:end;
+    padding:8px 12px calc(env(safe-area-inset-bottom) + 8px); background:var(--card); box-shadow:0 -1px 6px rgba(0,0,0,.08); }
+  .dockbtn { flex-direction:column; gap:2px; min-height:56px; color:var(--sub); font-size:12px; font-weight:600; }
+  .dockbtn:disabled { opacity:.4; cursor:default; }
+  #send.ready { color:var(--pri); }
+  #send .badge { position:absolute; margin:-30px 0 0 26px; min-width:20px; height:20px; padding:0 6px; border-radius:10px; background:var(--bad); color:#fff; font-size:12px; line-height:20px; }
+  #send { position:relative; }
+  .fab { width:76px; height:76px; margin:-30px auto 0; border-radius:50%; background:var(--pri); color:#fff; box-shadow:0 4px 14px rgba(21,165,126,.45); border:4px solid var(--card); }
+  .fab svg { width:34px; height:34px; }
+  .fab:active { transform:scale(.94); }
+  .fab:disabled { opacity:.5; }
 
   /* 촬영 화면 */
-  #cam { position:fixed; inset:0; background:#000; z-index:10; display:flex; flex-direction:column; }
+  #cam { position:fixed; inset:0; background:#000; z-index:10; display:flex; flex-direction:column; color:#fff; }
+  #ctop { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:calc(env(safe-area-inset-top) + 6px) 10px 6px; background:#000; }
+  .cbtn { width:44px; height:44px; border-radius:50%; padding:0; color:#fff; }
+  .cbtn.on { color:#ffd54a; }
+  .pill { min-height:34px; padding:0 14px; border-radius:17px; background:#2a2f33; color:#fff; font-size:14px; }
+  .pill.on { background:var(--pri); }
   #stage { position:relative; flex:1; overflow:hidden; }
   #video, #ov { position:absolute; inset:0; width:100%; height:100%; }
   #video { object-fit:contain; }
-  #hint { position:absolute; top:0; left:0; right:0; padding:calc(env(safe-area-inset-top) + 10px) 14px 10px; background:rgba(0,0,0,.55); color:#fff; font-size:15px; white-space:pre-line; }
+  #hint { position:absolute; left:50%; top:12px; transform:translateX(-50%); max-width:calc(100% - 24px); padding:7px 14px; border-radius:18px; background:rgba(0,0,0,.6); color:#fff; font-size:14px; font-weight:600; text-align:center; white-space:pre-line; }
+  #diag { position:absolute; left:8px; bottom:6px; font-size:10px; color:rgba(255,255,255,.55); }
   #flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .15s; }
-  #bar { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 16px calc(env(safe-area-inset-bottom) + 12px); background:#000; }
-  #bar button { min-height:46px; background:#2a2f38; color:#fff; font-size:15px; flex:1; }
-  #shutter { flex:0 0 92px !important; width:92px; height:92px; min-height:92px !important; padding:0; border-radius:50% !important; background:#fff !important; border:6px solid #9aa4b3 !important; box-shadow:inset 0 0 0 3px #fff; }
-  #shutter:active { transform:scale(.92); background:#dfe3ea !important; }
-  #last { position:absolute; right:12px; bottom:12px; width:56px; height:74px; border-radius:8px; border:2px solid #fff; object-fit:cover; background:#222; }
-  #count { position:absolute; left:12px; bottom:12px; color:#fff; background:rgba(0,0,0,.55); padding:4px 10px; border-radius:20px; font-weight:600; }
-  .th img { cursor:pointer; }
-  .th .dt { position:absolute; top:4px; left:4px; padding:2px 7px; border-radius:10px; font-size:12px; font-weight:700; color:#fff; background:rgba(0,0,0,.6); }
-  /* 검사일자 고르기: 투명한 날짜 칸을 위에 덮어 누르면 바로 달력이 열림 */
-  .dpick { position:relative; display:flex; align-items:center; justify-content:center; gap:8px; overflow:hidden; cursor:pointer; }
-  .dpick input { position:absolute; inset:0; width:100%; height:100%; opacity:0; border:0; margin:0; padding:0; cursor:pointer; -webkit-appearance:none; appearance:none; }
-  #hdate { flex-direction:column; gap:2px; padding:8px 12px; width:100%; min-height:60px; margin-bottom:10px; border-radius:12px; background:var(--card); border:2px solid var(--pri); color:var(--fg, inherit); font-size:18px; font-weight:700; }
-  #hdate span { white-space:nowrap; }
-  #hdate small { font-size:13px; font-weight:600; color:var(--sub); }
-  #hdate.other { border-color:#e8890c; background:#fff4e5; color:#8a4b00; }
-  #hdate.other small { color:#8a4b00; }
-  #cdate { position:absolute; left:50%; bottom:12px; transform:translateX(-50%); padding:8px 14px; border-radius:22px; background:rgba(0,0,0,.65); color:#fff; font-weight:700; font-size:16px; border:2px solid #fff; white-space:nowrap; }
-  #cdate.other { background:#e8890c; border-color:#ffd9a6; }
-  .set label { display:flex; align-items:center; gap:10px; min-height:40px; font-size:15px; }
-  .set input { width:22px; height:22px; accent-color:var(--pri); }
-  /* 크게 보기 · 모서리 조정 */
-  .full { position:fixed; inset:0; background:#000; z-index:20; display:flex; flex-direction:column; }
-  .vstage { position:relative; flex:1; overflow:hidden; display:flex; align-items:center; justify-content:center; padding-top:env(safe-area-inset-top); }
-  .vstage img { max-width:100%; max-height:100%; object-fit:contain; }
-  .vtop { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:calc(env(safe-area-inset-top) + 10px) 16px 8px; color:#fff; background:#000; font-weight:600; }
-  .vtop #vnote { color:#cfd6e0; font-size:13px; font-weight:500; text-align:right; }
+  #cdate { position:absolute; left:50%; bottom:12px; transform:translateX(-50%); padding:6px 14px; border-radius:18px; background:rgba(0,0,0,.6); color:#fff; font-weight:700; font-size:14px; white-space:nowrap; }
+  #cdate.other { background:var(--warn); }
+  #bar { display:grid; grid-template-columns:1fr 96px 1fr; align-items:center; padding:14px 18px calc(env(safe-area-inset-bottom) + 16px); background:#000; }
+  #lastbox { justify-self:start; position:relative; width:52px; height:68px; border-radius:6px; overflow:hidden; background:#1e2226; border:2px solid #fff; padding:0; }
+  #lastbox img { width:100%; height:100%; object-fit:cover; display:block; }
+  #count { position:absolute; top:-9px; right:-9px; min-width:22px; height:22px; padding:0 6px; border-radius:11px; background:var(--pri); color:#fff; font-size:12px; font-weight:700; line-height:22px; }
+  #lastbox { overflow:visible; }
+  #lastbox img { border-radius:4px; }
+  #shutter { justify-self:center; width:78px; height:78px; padding:0; border-radius:50%; background:#fff; box-shadow:0 0 0 4px #000, 0 0 0 8px #fff; }
+  #shutter:active { transform:scale(.92); background:#dfe3e6; }
+  #shutter.busy { background:#cfd5d9; }
+  #done { justify-self:end; width:56px; height:56px; border-radius:50%; padding:0; background:var(--pri); color:#fff; }
+  #done svg { width:28px; height:28px; stroke-width:2.6; }
+
+  /* 편집 화면 (보기·필터·회전·지우기) */
+  .full { position:fixed; inset:0; background:#16191b; z-index:20; display:flex; flex-direction:column; color:#fff; }
+  .vtop { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:calc(env(safe-area-inset-top) + 6px) 8px 6px; background:#000; font-weight:700; }
+  .vtop .ttl { flex:1; text-align:center; font-size:16px; }
+  .vtop .ttl small { display:block; font-size:12px; font-weight:500; color:#b8c1c7; }
+  .vtop .tbtn { min-height:44px; min-width:64px; color:#fff; font-size:15px; }
+  .vtop .tbtn.pri { color:var(--pri); }
   .vwrap { position:relative; flex:1; min-height:0; }
   .slides { position:absolute; inset:0; display:flex; overflow-x:auto; overflow-y:hidden; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
   .slides::-webkit-scrollbar { display:none; }
-  .slide { flex:0 0 100%; height:100%; scroll-snap-align:center; scroll-snap-stop:always; display:flex; align-items:center; justify-content:center; padding:6px; }
-  .slide img { max-width:100%; max-height:100%; object-fit:contain; background:#111; }
-  .nav { position:absolute; top:50%; transform:translateY(-50%); width:44px; height:64px; min-height:0; padding:0; border-radius:10px; background:rgba(0,0,0,.45); color:#fff; font-size:34px; font-weight:400; }
-  .nav.prev { left:6px; } .nav.next { right:6px; }
+  .slide { flex:0 0 100%; height:100%; scroll-snap-align:center; scroll-snap-stop:always; display:flex; align-items:center; justify-content:center; padding:12px; }
+  .slide img { max-width:100%; max-height:100%; object-fit:contain; background:#fff; box-shadow:0 2px 12px rgba(0,0,0,.5); }
+  .nav { position:absolute; top:50%; transform:translateY(-50%); width:40px; height:60px; padding:0; border-radius:10px; background:rgba(0,0,0,.4); color:#fff; font-size:32px; font-weight:400; }
+  .nav.prev { left:4px; } .nav.next { right:4px; }
   .nav:disabled { opacity:0; pointer-events:none; }
-  .vsendbar { padding-top:0; }
-  .vbar #vsend { background:var(--ok); min-height:54px; font-size:17px; }
+  #vbusy { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); padding:10px 18px; border-radius:20px; background:rgba(0,0,0,.7); font-weight:600; }
+  /* 필터 줄 */
+  #filters { display:flex; gap:10px; overflow-x:auto; padding:10px 12px 6px; background:#000; scrollbar-width:none; }
+  #filters::-webkit-scrollbar { display:none; }
+  .fl { flex:0 0 auto; flex-direction:column; gap:4px; padding:0; color:#cfd6db; font-size:12px; font-weight:600; }
+  .fl canvas { width:58px; height:76px; border-radius:6px; background:#333; border:2px solid transparent; display:block; }
+  .fl.sel { color:var(--pri); }
+  .fl.sel canvas { border-color:var(--pri); }
+  #fall { flex:0 0 auto; align-self:center; min-height:34px; padding:0 12px; border-radius:17px; background:#2a2f33; color:#fff; font-size:13px; }
+  /* 도구 막대 */
+  .tools { display:flex; justify-content:space-around; padding:6px 4px calc(env(safe-area-inset-bottom) + 8px); background:#000; }
+  .tool { flex-direction:column; gap:3px; min-width:64px; min-height:56px; padding:0 4px; color:#e6eaed; font-size:12px; font-weight:600; }
+  .tool.sel { color:var(--pri); }
+  .tool.danger { color:#ff8a8a; }
+  .tool:disabled { opacity:.35; }
+  /* 자르기 화면 */
+  .vstage { position:relative; flex:1; overflow:hidden; }
   #acan { position:absolute; inset:0; width:100%; height:100%; touch-action:none; }
-  .vnote { color:#cfd6e0; font-size:13px; padding:6px 16px 0; background:#000; text-align:center; min-height:4px; }
-  .vbar { display:flex; gap:8px; padding:10px 12px calc(env(safe-area-inset-bottom) + 12px); background:#000; }
-  .vbar button { flex:1; min-height:48px; background:#2a2f38; color:#fff; font-size:15px; padding:0 6px; }
-  .vbar .danger { background:#5a2326; color:#ffd7d7; }
-  .vbar .okb { background:var(--pri); }
+  .vnote { color:#b8c1c7; font-size:13px; padding:8px 16px 0; background:#000; text-align:center; }
 </style>
 </head>
 <body>
-<main id="home">
-  <h1>자동스캔</h1>
-  <p class="sub">성적서를 비추면 테두리를 찾아 자동으로 찍고, 보내면 검사일자 폴더에 ‘품번_월.일’ 이름으로 저장됩니다.</p>
-  <div id="bad" class="msg bad" hidden>주소가 올바르지 않습니다. 관리자에게 받은 주소를 그대로 열어 주세요.</div>
-
+<header class="appbar">
+  <div class="brand"><span class="logo"><svg class="i" viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M8 9h8M8 12h8M8 15h5"/></svg></span>자동스캔</div>
   <label id="hdate" class="dpick"><span>검사일자 <b id="hdtxt"></b></span><small id="hdnote"></small><input type="date" id="insp" aria-label="검사일자"></label>
-  <button id="start" class="pri">자동 스캔 시작</button>
-  <label class="btn alt">앨범에서 고르기<input id="pick" type="file" accept="image/*" multiple></label>
-  <div id="cvstate">스캔 기능 준비 중… (먼저 ‘자동 스캔 시작’을 눌러도 됩니다)</div>
-
-  <div id="grid" class="grid"></div>
-  <button id="send" disabled>보낼 사진 없음</button>
-  <button id="clear" hidden>모두 지우기</button>
-  <div id="msg" class="msg"></div>
-
-  <div class="card set">
-    <h2>설정</h2>
-    <label><input type="checkbox" id="set_instant"> 찍자마자 바로 보내기</label>
-    <label><input type="checkbox" id="set_sound"> 찍을 때 소리</label>
-    <label><input type="checkbox" id="set_enhance"> 선명하게 자동 보정 (볼펜 글씨 진하게, 종이·뒷면 비침 하얗게)</label>
+</header>
+<main id="home">
+  <div id="bad" class="msg bad" hidden>주소가 올바르지 않습니다. 관리자에게 받은 주소를 그대로 열어 주세요.</div>
+  <div id="empty" class="empty">
+    <div class="pic"><svg class="i" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg></div>
+    <b>성적서를 찍어 보세요</b>
+    <small>아래 카메라 버튼을 누르고 종이를 비추면<br>테두리를 찾아 저절로 찍습니다.</small>
   </div>
+  <div class="secthead" id="ghead" hidden><b id="gcount"></b><button id="clear" class="link">모두 지우기</button></div>
+  <div id="grid" class="grid"></div>
+  <div id="msg" class="msg"></div>
+  <div id="cvstate">스캔 기능 준비 중…</div>
 
-  <div class="card">
-    <h2>사용법</h2>
-    <ul>
+  <details class="card set">
+    <summary>설정</summary>
+    <div>
+      <label>기본 보정
+        <select id="set_filter">
+          <option value="magic">매직 컬러 (추천)</option>
+          <option value="bw">흑백 문서</option>
+          <option value="gray">회색조</option>
+          <option value="original">원본</option>
+        </select></label>
+      <label><input type="checkbox" id="set_instant"> 찍자마자 바로 보내기</label>
+      <label><input type="checkbox" id="set_sound"> 찍을 때 소리</label>
+    </div>
+  </details>
+
+  <details class="card">
+    <summary>사용법</summary>
+    <div><ul>
       <li><b>검사일자</b>: 성적서에 적힌 검사일자를 자동으로 읽어 그 날짜 폴더에 저장합니다. 읽지 못하면 찍은 날짜로 이름을 지어 ‘날짜미확인’ 폴더에 따로 저장되니 확인 후 고쳐 주세요.</li>
-      <li>‘자동 스캔 시작’ → 문서를 비추면 파란 테두리가 잡히고, 초록으로 바뀌면 저절로 찍힙니다. <b>종이를 화면에 꽉 채우지 말고 네 귀퉁이 바깥이 조금 보이게</b> 찍어야 반듯하게 잘립니다.</li>
-      <li>다음 문서로 바꾸면 버튼 없이 또 찍힙니다. 다 찍으면 ‘완료’ → ‘모두 보내기’.</li>
-      <li>찍은 사진은 반듯하게 펴고 그림자를 지워서 보냅니다. 사진을 누르면 크게 보고, ‘모서리 조정’으로 고치거나 지울 수 있습니다.</li>
+      <li>가운데 <b>카메라 버튼</b> → 문서를 비추면 초록 테두리가 잡히고 저절로 찍힙니다. <b>종이를 화면에 꽉 채우지 말고 네 귀퉁이 바깥이 조금 보이게</b> 찍어야 반듯하게 잘립니다.</li>
+      <li>다음 문서로 바꾸면 버튼 없이 또 찍힙니다. 다 찍으면 오른쪽 아래 <b>✓</b>.</li>
+      <li>편집 화면에서 <b>필터</b>(매직 컬러·흑백·회색조·원본), <b>자르기</b>, <b>회전</b>, <b>지우기</b>를 할 수 있습니다. 다 되면 <b>보내기</b>.</li>
       <li>보내지 않은 사진은 이 화면을 닫아도 남아 있습니다. 보내는 동안에는 화면을 켜 두세요.</li>
       <li>홈 화면에 추가해 두면 앱처럼 쓸 수 있습니다. (공유 버튼 → 홈 화면에 추가)</li>
-    </ul>
-  </div>
+    </ul></div>
+  </details>
 
-  <div class="card">
-    <h2>최근 분류 결과</h2>
-    <div id="recent" class="sub" style="margin:0">아래 버튼을 누르면 보입니다.</div>
-    <button id="more">최근 결과 보기</button>
-  </div>
+  <details class="card" id="recentcard">
+    <summary>최근 분류 결과</summary>
+    <div><div id="recent" class="sub" style="color:var(--sub);font-size:14px">아래 버튼을 누르면 보입니다.</div>
+    <button id="more">최근 결과 보기</button></div>
+  </details>
 </main>
+<nav id="dock">
+  <label class="btn dockbtn"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg><span>앨범</span><input id="pick" type="file" accept="image/*" multiple></label>
+  <button id="start" class="fab" aria-label="스캔 시작"><svg class="i" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></svg></button>
+  <button id="send" class="dockbtn" disabled><svg class="i" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"/></svg><span id="sendtxt">보내기</span><span class="badge" id="sendn" hidden></span></button>
+</nav>
 
 <section id="cam" hidden>
+  <div id="ctop">
+    <button id="cclose" class="cbtn" aria-label="닫기"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <button id="auto" class="pill on">자동 촬영</button>
+    <button id="torch" class="cbtn" aria-label="플래시" hidden><svg class="i" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></button>
+    <span id="torchgap" style="width:44px"></span>
+  </div>
   <div id="stage">
     <video id="video" playsinline muted autoplay></video>
     <canvas id="ov"></canvas>
     <div id="flash"></div>
     <div id="hint"></div>
-    <div id="count">0장</div>
+    <div id="diag"></div>
     <label id="cdate" class="dpick"><span id="cdtxt"></span><input type="date" id="insp2" aria-label="검사일자"></label>
-    <img id="last" alt="" hidden>
   </div>
   <div id="bar">
-    <button id="auto">자동: 켬</button>
-    <button id="torch" hidden>플래시</button>
+    <button id="lastbox" aria-label="찍은 사진 보기"><img id="last" alt="" hidden><span id="count" hidden>0</span></button>
     <button id="shutter" aria-label="찍기"></button>
-    <button id="done">완료</button>
+    <button id="done" aria-label="완료"><svg class="i" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg></button>
   </div>
 </section>
 
 <section id="view" class="full" hidden>
-  <div class="vtop"><span id="vcount">1 / 1</span><span id="vnote"></span></div>
+  <div class="vtop">
+    <button id="vclose" class="tbtn">‹ 뒤로</button>
+    <div class="ttl"><span id="vcount">1 / 1</span><small id="vnote"></small></div>
+    <button id="vsend" class="tbtn pri">보내기</button>
+  </div>
   <div class="vwrap">
     <div id="slides" class="slides"></div>
     <button id="vprev" class="nav prev" aria-label="이전 사진">‹</button>
     <button id="vnext" class="nav next" aria-label="다음 사진">›</button>
+    <div id="vbusy" hidden>보정 중…</div>
   </div>
-  <div class="vbar">
-    <button id="vclose">닫기</button>
-    <button id="vadj">모서리 조정</button>
-    <button id="vdel" class="danger">이 사진 지우기</button>
+  <div id="filters" hidden>
+    <button class="fl" data-f="original"><canvas width="58" height="76"></canvas>원본</button>
+    <button class="fl" data-f="magic"><canvas width="58" height="76"></canvas>매직 컬러</button>
+    <button class="fl" data-f="gray"><canvas width="58" height="76"></canvas>회색조</button>
+    <button class="fl" data-f="bw"><canvas width="58" height="76"></canvas>흑백</button>
+    <button id="fall">모든 장에 적용</button>
   </div>
-  <div class="vbar vsendbar" id="vsendbar"><button id="vsend">보내기</button></div>
+  <div class="tools">
+    <button id="vadj" class="tool"><svg class="i" viewBox="0 0 24 24"><path d="M6 2v14a2 2 0 0 0 2 2h14M18 22V8a2 2 0 0 0-2-2H2"/></svg>자르기</button>
+    <button id="vfilt" class="tool"><svg class="i" viewBox="0 0 24 24"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>필터</button>
+    <button id="vrot" class="tool"><svg class="i" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>회전</button>
+    <button id="vdel" class="tool danger"><svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>지우기</button>
+  </div>
 </section>
 
 <section id="adj" class="full" hidden>
+  <div class="vtop">
+    <button id="acancel" class="tbtn">취소</button>
+    <div class="ttl">자르기</div>
+    <button id="aok" class="tbtn pri">적용</button>
+  </div>
   <div class="vstage" id="astage"><canvas id="acan"></canvas></div>
-  <div class="vnote">흰 점을 문서 모서리로 끌어 맞추고 ‘적용’. ‘자동’은 다시 찾기, ‘전체’는 펴지 않고 사진 전체.</div>
-  <div class="vbar">
-    <button id="aauto">자동</button>
-    <button id="afull">전체</button>
-    <button id="acancel">취소</button>
-    <button id="aok" class="okb">적용</button>
+  <div class="vnote">동그라미를 문서 모서리로 끌어 맞추세요. 끄는 동안 손가락 밑이 확대됩니다.</div>
+  <div class="tools">
+    <button id="aauto" class="tool"><svg class="i" viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="m9 12 2 2 4-4"/></svg>자동 찾기</button>
+    <button id="afull" class="tool"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>전체</button>
   </div>
 </section>
 
@@ -200,7 +291,7 @@ function showInsp() {
   ['insp', 'insp2'].forEach(function (id) { var el = document.getElementById(id); if (el) el.value = inspDay; });
   var h = document.getElementById('hdtxt'); if (!h) return;
   h.textContent = p[0] + '.' + md;
-  document.getElementById('hdnote').textContent = other ? '(오늘 아님 · 눌러서 바꾸기)' : '(오늘 · 눌러서 바꾸기)';
+  document.getElementById('hdnote').textContent = other ? '오늘 아님 · 눌러서 바꾸기' : '눌러서 바꾸기';
   document.getElementById('hdate').className = 'dpick' + (other ? ' other' : '');
   document.getElementById('cdtxt').textContent = '검사일자 ' + md + (other ? ' (오늘 아님)' : '');
   document.getElementById('cdate').className = 'dpick' + (other ? ' other' : '');
@@ -216,7 +307,7 @@ if (!KEY) { $('bad').hidden = false; $('start').disabled = true; }
 
 // ------------------------------------------------------------------ OpenCV 준비
 var cvDone, cvWait = new Promise(function (r) { cvDone = r; });
-function setReady() { if (cvReady) return; cvReady = true; $('cvstate').textContent = '스캔 기능 준비 완료'; cvDone(); }
+function setReady() { if (cvReady) return; cvReady = true; $('cvstate').textContent = ''; cvDone(); }
 window.Module = { onRuntimeInitialized: setReady };
 (function () {
   // opencv.js(0.2MB) + opencv.wasm(7.6MB) 를 같은 곳에서 받음 → 받으면서 바로 준비(아이폰에서 훨씬 빠름)
@@ -487,46 +578,6 @@ function warp(img, q) {
   return out;
 }
 
-/** 보정 (밝기 채널만 바꿔서 펜·도장 색은 유지)
- *  1) 종이 배경 밝기로 나눔 → 그림자·조명 얼룩 제거
- *  2) strong=true: 검정점(하위 1%)~흰점(228) 늘리기 + 감마 1.35 + 약한 언샤프 → 연한 볼펜 진하게, 뒷면 비침 하얗게 */
-function flatten(img, strong) {
-  var T = []; function k(m) { T.push(m); return m; }
-  try {
-    var lab = k(new cv.Mat()); cv.cvtColor(img, lab, cv.COLOR_RGB2Lab);
-    var ch = k(new cv.MatVector()); cv.split(lab, ch);
-    var L = k(ch.get(0)), A = k(ch.get(1)), B = k(ch.get(2));
-    var sm = k(new cv.Mat()); cv.resize(L, sm, new cv.Size(Math.max(1, img.cols >> 2), Math.max(1, img.rows >> 2)), 0, 0, cv.INTER_AREA);
-    cv.dilate(sm, sm, k(cv.Mat.ones(7, 7, cv.CV_8U)));
-    cv.medianBlur(sm, sm, 21);
-    var bg = k(new cv.Mat()); cv.resize(sm, bg, new cv.Size(img.cols, img.rows), 0, 0, cv.INTER_LINEAR);
-    bg.convertTo(bg, cv.CV_32F);
-    cv.max(bg, k(new cv.Mat(bg.rows, bg.cols, cv.CV_32F, new cv.Scalar(30))), bg);
-    var f = k(new cv.Mat()); L.convertTo(f, cv.CV_32F);
-    cv.divide(f, bg, f, 255);
-    var n8 = k(new cv.Mat()); f.convertTo(n8, cv.CV_8U);
-    var d = n8.data, i;
-    if (strong) {
-      var hc = new Uint32Array(256); for (i = 0; i < d.length; i++) hc[d[i]]++;
-      var acc = 0, black = 0, target = d.length * 0.01;
-      for (i = 0; i < 256; i++) { acc += hc[i]; if (acc >= target) { black = i; break; } }
-      black = Math.min(120, black);
-      var white = Math.max(228, black + 40), lut = new Uint8Array(256);
-      for (i = 0; i < 256; i++) lut[i] = Math.round(255 * Math.pow(Math.min(1, Math.max(0, (i - black) / (white - black))), 1.35));
-      for (i = 0; i < d.length; i++) d[i] = lut[d[i]];
-      var bl = k(new cv.Mat()); cv.GaussianBlur(n8, bl, new cv.Size(0, 0), 1.0);
-      cv.addWeighted(n8, 1.6, bl, -0.6, 0, n8);
-    }
-    var mv = k(new cv.MatVector()); mv.push_back(n8); mv.push_back(A); mv.push_back(B);
-    var merged = k(new cv.Mat()); cv.merge(mv, merged);
-    var out = new cv.Mat(); cv.cvtColor(merged, out, cv.COLOR_Lab2RGB);
-    return out;
-  } finally {
-    T.forEach(function (m) { try { m.delete(); } catch (e) {} });
-  }
-}
-
-/** 캔버스 → 문서 네 모서리 (0~1 비율, [좌상,우상,우하,좌하]) 또는 null */
 function detectQuad(canvas) {
   if (!cvReady) return null;
   // 큰 사진을 통째로 읽지 않고 DETECT_WORK 로 줄인 뒤 찾음 (종이 끝과 표 선을 구분할 만큼 크게)
@@ -541,9 +592,212 @@ function detectQuad(canvas) {
   return q ? q.map(function (p) { return { x: p.x / sm.width, y: p.y / sm.height }; }) : null;
 }
 
-/** 캔버스(원본) + 모서리(비율, null 이면 펴지 않음) → 펴고 그림자 지운 JPEG Blob */
-function renderOut(canvas, q) {
-  if (!cvReady) return toBlob(canvas);
+/** 필터: original(원본) · magic(매직 컬러) · gray(회색조) · bw(흑백). img = RGB Mat → 새 RGB Mat
+ *  안드로이드 FilterKernel.kt 와 같은 정수 계산이라 웹·앱 결과가 1바이트까지 같음 (Claude + Codex 함께 만듦) */
+var FILTERS = ['original', 'magic', 'gray', 'bw'];
+function enhanceDoc(img, mode) {
+  if (mode === 'original') return img.clone();
+  var rgba = new cv.Mat(), o = null;
+  cv.cvtColor(img, rgba, cv.COLOR_RGB2RGBA);
+  try { o = enhanceDocRGBA(rgba, mode); } finally { rgba.delete(); }
+  var rgb = new cv.Mat(); cv.cvtColor(o, rgb, cv.COLOR_RGBA2RGB); o.delete();
+  return rgb;
+}
+/* OpenCV.js 4.x, ES5. Input CV_8UC4 RGBA; returned Mat belongs to caller.
+ * Integer reference kernels deliberately avoid backend-dependent resize/Lab/
+ * SIMD rounding. Filters.kt duplicates these kernels exactly. No DOM required.
+ */
+function enhanceDocRGBA(rgbaMat, mode) {
+  var LOCR = 4, BLO = 150, BHI = 235, PF = 200; // 흑백 지역 배경 창(폭의 0.4%), 흑백 곡선, 종이 바닥 밝기
+  var src = null, out = null, success = false;
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+  function roundDiv(n, d) { return Math.floor((n + Math.floor(d / 2)) / d); }
+  function lum(r, g, b) { return (77 * r + 150 * g + 29 * b + 128) >> 8; }
+  // Separable rectangular max/min, replicated borders, interleaved RGB.
+  function morph(a, w, h, radius, maximum) {
+    var b = new Uint8Array(a.length), c = new Uint8Array(a.length);
+    var x, y, ch, k, v, t;
+    for (y = 0; y < h; y++) for (x = 0; x < w; x++) for (ch = 0; ch < 3; ch++) {
+      v = maximum ? 0 : 255;
+      for (k = -radius; k <= radius; k++) {
+        t = a[(y * w + clamp(x + k, 0, w - 1)) * 3 + ch];
+        v = maximum ? Math.max(v, t) : Math.min(v, t);
+      }
+      b[(y * w + x) * 3 + ch] = v;
+    }
+    for (y = 0; y < h; y++) for (x = 0; x < w; x++) for (ch = 0; ch < 3; ch++) {
+      v = maximum ? 0 : 255;
+      for (k = -radius; k <= radius; k++) {
+        t = b[(clamp(y + k, 0, h - 1) * w + x) * 3 + ch];
+        v = maximum ? Math.max(v, t) : Math.min(v, t);
+      }
+      c[(y * w + x) * 3 + ch] = v;
+    }
+    return c;
+  }
+  function box(a, w, h, radius) {
+    var b = new Uint8Array(a.length), c = new Uint8Array(a.length);
+    var x, y, ch, k, sum, n = radius * 2 + 1;
+    for (y = 0; y < h; y++) for (ch = 0; ch < 3; ch++) {
+      sum = 0;
+      for (k = -radius; k <= radius; k++) sum += a[(y * w + clamp(k, 0, w - 1)) * 3 + ch];
+      for (x = 0; x < w; x++) {
+        b[(y * w + x) * 3 + ch] = roundDiv(sum, n);
+        sum += a[(y * w + clamp(x + radius + 1, 0, w - 1)) * 3 + ch] - a[(y * w + clamp(x - radius, 0, w - 1)) * 3 + ch];
+      }
+    }
+    for (x = 0; x < w; x++) for (ch = 0; ch < 3; ch++) {
+      sum = 0;
+      for (k = -radius; k <= radius; k++) sum += b[(clamp(k, 0, h - 1) * w + x) * 3 + ch];
+      for (y = 0; y < h; y++) {
+        c[(y * w + x) * 3 + ch] = roundDiv(sum, n);
+        sum += b[(clamp(y + radius + 1, 0, h - 1) * w + x) * 3 + ch] - b[(clamp(y - radius, 0, h - 1) * w + x) * 3 + ch];
+      }
+    }
+    return c;
+  }
+  try {
+    if (!rgbaMat || rgbaMat.empty() || rgbaMat.type() !== cv.CV_8UC4) throw new Error('Expected nonempty CV_8UC4 RGBA');
+    mode = mode || 'magic';
+    if (mode === 'original') return rgbaMat.clone();
+    if (mode !== 'magic' && mode !== 'gray' && mode !== 'bw') throw new Error('Unknown mode: ' + mode);
+    // clone also makes non-contiguous ROIs safe. It is the only temporary Mat.
+    src = rgbaMat.clone();
+    var w = src.cols, h = src.rows, count = w * h;
+    var step = Math.max(1, Math.ceil(Math.max(w, h) / 384));
+    var sw = Math.ceil(w / step), sh = Math.ceil(h / step);
+    var small = new Uint8Array(sw * sh * 3), input = src.data;
+    var x, y, sx, sy, xx, yy, c, i, p, r, g, b, v, sum, n;
+    // Exact block-area downsampling (last block may be shorter).
+    for (sy = 0; sy < sh; sy++) for (sx = 0; sx < sw; sx++) {
+      var sr = 0, sg = 0, sb = 0; n = 0;
+      for (yy = sy * step; yy < Math.min(h, (sy + 1) * step); yy++)
+        for (xx = sx * step; xx < Math.min(w, (sx + 1) * step); xx++) {
+          p = (yy * w + xx) * 4; sr += input[p]; sg += input[p + 1]; sb += input[p + 2]; n++;
+        }
+      p = (sy * sw + sx) * 3;
+      small[p] = roundDiv(sr, n); small[p + 1] = roundDiv(sg, n); small[p + 2] = roundDiv(sb, n);
+    }
+    // Close 15x15 removes strokes up to about 84 px at A4/200dpi.
+    var bg = morph(morph(small, sw, sh, 7, true), sw, sh, 7, false);
+    for (i = 0; i < 3; i++) bg = box(bg, sw, sh, 5);
+    var x0 = new Int32Array(w), x1 = new Int32Array(w), fx = new Int32Array(w);
+    for (x = 0; x < w; x++) {
+      v = clamp(Math.floor(((2 * x + 1) * sw * 128) / w) - 128, 0, (sw - 1) * 256);
+      x0[x] = v >> 8; x1[x] = Math.min(sw - 1, x0[x] + 1); fx[x] = v & 255;
+    }
+    out = new cv.Mat(h, w, cv.CV_8UC4);
+    // Creating a Mat can grow WASM memory; refresh all views afterwards.
+    input = src.data; var dst = out.data;
+    var hist = new Uint32Array(256), luma = new Uint8Array(count);
+    var bgs = [0, 0, 0];
+    for (y = 0; y < h; y++) {
+      v = clamp(Math.floor(((2 * y + 1) * sh * 128) / h) - 128, 0, (sh - 1) * 256);
+      var y0 = v >> 8, y1 = Math.min(sh - 1, y0 + 1), fy = v & 255;
+      for (x = 0; x < w; x++) {
+        var a0 = (y0 * sw + x0[x]) * 3, a1 = (y0 * sw + x1[x]) * 3;
+        var a2 = (y1 * sw + x0[x]) * 3, a3 = (y1 * sw + x1[x]) * 3;
+        var wx = fx[x];
+        for (c = 0; c < 3; c++) {
+          var top = bg[a0 + c] * (256 - wx) + bg[a1 + c] * wx;
+          var bot = bg[a2 + c] * (256 - wx) + bg[a3 + c] * wx;
+          bgs[c] = Math.floor((top * (256 - fy) + bot * fy + 32768) / 65536);
+        }
+        var confidence = clamp(roundDiv((Math.max(bgs[0], bgs[1], bgs[2]) - 80) * 256, 100), 0, 256);
+        p = (y * w + x) * 4;
+        for (c = 0; c < 3; c++) {
+          v = input[p + c];
+          var norm = Math.min(255, roundDiv(v * 255, Math.max(80, bgs[c])));
+          dst[p + c] = roundDiv(v * (256 - confidence) + norm * confidence, 256);
+        }
+        dst[p + 3] = 255;
+        v = lum(dst[p], dst[p + 1], dst[p + 2]); luma[y * w + x] = v; hist[v]++;
+      }
+    }
+    // 0.5th percentile, capped at 32: faint-only pages cannot set a high black point.
+    sum = 0; var black = 0, target = Math.ceil(count / 200);
+    for (i = 0; i < 256; i++) { sum += hist[i]; if (sum >= target) { black = Math.min(32, i); break; } }
+    var lut = new Uint8Array(256), white = mode === 'gray' ? 249 : 244;
+    var bend = mode === 'gray' ? 28 : 64;
+    for (i = 0; i < 256; i++) {
+      v = clamp(roundDiv((i - black) * 255, white - black), 0, 255);
+      lut[i] = clamp(v - roundDiv(bend * v * (255 - v), 65025), 0, 255);
+
+    }
+    if (mode === 'bw') {
+      // table cell shading counts as background: divide by local bright value (window ~16px)
+      var F = 2, lw = Math.ceil(w / F), lh = Math.ceil(h / F), loc = new Uint8Array(lw * lh * 3);
+      for (sy = 0; sy < lh; sy++) for (sx = 0; sx < lw; sx++) {
+        sum = 0; n = 0;
+        for (yy = sy * F; yy < Math.min(h, sy * F + F); yy++) for (xx = sx * F; xx < Math.min(w, sx * F + F); xx++) { sum += luma[yy * w + xx]; n++; }
+        v = roundDiv(sum, n); p = (sy * lw + sx) * 3; loc[p] = loc[p + 1] = loc[p + 2] = v;
+      }
+      loc = morph(loc, lw, lh, Math.max(2, Math.round(w * LOCR / 1000 / F)), true); loc = box(loc, lw, lh, 1);
+      // paper level = 95th percentile of luma; local bg below 25% of it is left as is, above 50% fully normalized
+      var lh2 = new Uint32Array(256); for (i = 0; i < count; i++) lh2[luma[i]]++;
+      var paper = 255; sum = 0; for (i = 0; i < 256; i++) { sum += lh2[i]; if (sum >= count - Math.floor(count / 20)) { paper = Math.max(1, i); break; } }
+      var g0 = roundDiv(paper, 4), g1 = Math.max(g0 + 1, roundDiv(paper, 2));
+      for (y = 0; y < h; y++) {
+        var ly = Math.min(lh - 1, (y / F) | 0);
+        for (x = 0; x < w; x++) {
+          var lb = loc[(ly * lw + Math.min(lw - 1, (x / F) | 0)) * 3];
+          i = y * w + x;
+          var tt = clamp(roundDiv((lb - g0) * 256, g1 - g0), 0, 256);
+          if (tt > 0) { var nn = Math.min(255, roundDiv(luma[i] * 255, Math.max(1, lb))); luma[i] = luma[i] + roundDiv((nn - luma[i]) * tt, 256); }
+        }
+      }
+      for (i = 0; i < 256; i++) { v = clamp(roundDiv((i - BLO) * 255, BHI - BLO), 0, 255); lut[i] = Math.min(roundDiv(v * v * (765 - 2 * v), 65025), i <= 238 ? i + 12 : 255); }
+    }
+    for (i = 0; i < count; i++) {
+      p = i * 4;
+      if (mode === 'magic') {
+        r = lut[dst[p]]; g = lut[dst[p + 1]]; b = lut[dst[p + 2]];
+        v = lum(r, g, b);
+        dst[p] = clamp(r + roundDiv((r - v) * 18, 128), 0, 255);
+        dst[p + 1] = clamp(g + roundDiv((g - v) * 18, 128), 0, 255);
+        dst[p + 2] = clamp(b + roundDiv((b - v) * 18, 128), 0, 255);
+        // paper floor: bright + nearly colorless -> pure white (smooth ramp)
+        v = lum(dst[p], dst[p + 1], dst[p + 2]);
+        var chroma = Math.max(dst[p], dst[p + 1], dst[p + 2]) - Math.min(dst[p], dst[p + 1], dst[p + 2]);
+        if (v >= PF && chroma <= 45) {
+          var t = clamp(roundDiv((v - PF) * 256, 24), 0, 256);
+          for (c = 0; c < 3; c++) dst[p + c] = dst[p + c] + roundDiv((255 - dst[p + c]) * t, 256);
+        }
+      } else {
+        v = lut[luma[i]];
+        // Colored stamps stay dark gray rather than disappearing into pure black.
+        if (mode === 'bw' && Math.max(dst[p], dst[p+1], dst[p+2]) - Math.min(dst[p], dst[p+1], dst[p+2]) > 35 && luma[i] > 80) v = Math.max(32, v);
+        dst[p] = dst[p + 1] = dst[p + 2] = v;
+      }
+      luma[i] = lum(dst[p], dst[p + 1], dst[p + 2]);
+    }
+    // Dark-side-only cross unsharp: radius 1, 0.30, deadband 2, max darkening 6.
+    // No bright overshoot; does not amplify blank-paper grain.
+    for (y = 1; y < h - 1; y++) for (x = 1; x < w - 1; x++) {
+      i = y * w + x; v = luma[i];
+      if (v >= 225) continue;
+      var detail = v - roundDiv(luma[i-1] + luma[i+1] + luma[i-w] + luma[i+w] + 4*v, 8);
+      if (detail >= -2) continue;
+      var delta = Math.max(-6, roundDiv((detail + 2) * 3, 10));
+      p = i * 4;
+      dst[p] = Math.max(0, dst[p] + delta); dst[p+1] = Math.max(0, dst[p+1] + delta); dst[p+2] = Math.max(0, dst[p+2] + delta);
+    }
+    success = true; return out;
+  } finally {
+    if (src) src.delete();
+    if (out && !success) out.delete();
+  }
+}
+function filterOf(it) { return (it && FILTERS.indexOf(it.filter) >= 0) ? it.filter : settingStr('filter'); }
+/** 캔버스를 90°×rot 만큼 시계 방향으로 돌림 */
+function rotCanvas(c, rot) {
+  rot = ((rot || 0) % 4 + 4) % 4; if (!rot) return c;
+  var o = document.createElement('canvas'); o.width = rot % 2 ? c.height : c.width; o.height = rot % 2 ? c.width : c.height;
+  var g = o.getContext('2d'); g.translate(o.width / 2, o.height / 2); g.rotate(rot * Math.PI / 2); g.drawImage(c, -c.width / 2, -c.height / 2);
+  return o;
+}
+/** 캔버스(원본) + 모서리(비율, null 이면 펴지 않음) + 필터 + 회전 → 결과 캔버스 */
+function makeDoc(canvas, q, mode, rot) {
   var src = null, img = null;
   try {
     src = cv.imread(canvas);
@@ -557,15 +811,20 @@ function renderOut(canvas, q) {
       var r = Math.min(1, A4_H / Math.max(img.cols, img.rows));
       if (r < 1) { var rs = new cv.Mat(); cv.resize(img, rs, new cv.Size(0, 0), r, r, cv.INTER_AREA); img.delete(); img = rs; }
     }
-    var flat = flatten(img, setting('enhance')); img.delete(); img = null;
+    var flat = enhanceDoc(img, mode || settingStr('filter')); img.delete(); img = null;
     var outC = document.createElement('canvas');
     cv.imshow(outC, flat); flat.delete();
-    return toBlob(outC);
+    return rotCanvas(outC, rot);
   } catch (e) {
     console.error(e);
     if (src) src.delete(); if (img) img.delete();
-    return toBlob(canvas);
+    return rotCanvas(canvas, rot);
   }
+}
+/** → 보낼 JPEG Blob */
+function renderOut(canvas, q, mode, rot) {
+  if (!cvReady) return toBlob(rotCanvas(canvas, rot));
+  return toBlob(makeDoc(canvas, q, mode, rot));
 }
 
 /** 찍은 사진 → { orig: 원본 JPEG, quad: 찾은 모서리, blob: 보정본 } (모서리 조정 때 원본에서 다시 만듦) */
@@ -573,8 +832,9 @@ function processShot(canvas) {
   return (cvReady ? Promise.resolve() : cvWait).then(function () {
     var q = null;
     try { q = detectQuad(canvas); } catch (e) { console.error(e); }
-    return Promise.all([origBlob(canvas), renderOut(canvas, q)]).then(function (r) {
-      return { orig: r[0], quad: q, blob: r[1] };
+    var mode = settingStr('filter');
+    return Promise.all([origBlob(canvas), renderOut(canvas, q, mode, 0)]).then(function (r) {
+      return { orig: r[0], quad: q, blob: r[1], filter: mode, rot: 0 };
     });
   });
 }
@@ -637,13 +897,13 @@ AutoShot.prototype.markShot = function (q, now) {
 AutoShot.prototype.resetSteady = function () { this.steadyQuad = null; this.missingSince = 0; };
 
 // ------------------------------------------------------------------ 촬영 화면
-var stream = null, autoOn = true, shot = new AutoShot(), lastQuad = null, shots = 0, timer = null, diag = '카메라 준비 중', busy = 0;
+var camItems = [], stream = null, autoOn = true, shot = new AutoShot(), lastQuad = null, shots = 0, timer = null, diag = '카메라 준비 중', busy = 0;
 var video = $('video'), ov = $('ov');
 var small = document.createElement('canvas');
 
 function openCamera() {
   $('cam').hidden = false; $('home').hidden = true;
-  shots = 0; shot = new AutoShot(); lastQuad = null; showCount(); showHint();
+  shots = 0; camItems = []; shot = new AutoShot(); lastQuad = null; $('last').hidden = true; showCount(); showHint();
   var p = TEST ? testStream() : navigator.mediaDevices.getUserMedia({
     audio: false,
     video: { facingMode: { ideal: 'environment' }, width: { ideal: 4032 }, height: { ideal: 3024 } }
@@ -664,7 +924,7 @@ function openCamera() {
 
 function closeCamera() {
   clearTimeout(timer); timer = null;
-  dropWake('cam'); stillCap = null; camTrack = null; torchOn = false; $('torch').hidden = true;
+  dropWake('cam'); stillCap = null; camTrack = null; torchOn = false; $('torch').hidden = true; $('torchgap').hidden = false;
   if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
   stream = null; video.srcObject = null;
   $('cam').hidden = true; $('home').hidden = false;
@@ -707,12 +967,14 @@ function drawOverlay(q, aspect, steady) {
   var c = ov.getContext('2d'); c.clearRect(0, 0, ov.width, ov.height);
   if (!q) return;
   var W = ov.width, H = ov.height, w = Math.min(W, H * aspect), h = w / aspect, left = (W - w) / 2, top = (H - h) / 2;
-  var col = steady ? '46,204,113' : '61,139,253';
+  var col = steady ? '21,165,126' : '255,255,255';
+  var P = q.map(function (p) { return { x: left + p.x * w, y: top + p.y * h }; });
   c.beginPath();
-  q.forEach(function (p, i) { var x = left + p.x * w, y = top + p.y * h; if (i) c.lineTo(x, y); else c.moveTo(x, y); });
+  P.forEach(function (p, i) { if (i) c.lineTo(p.x, p.y); else c.moveTo(p.x, p.y); });
   c.closePath();
-  c.fillStyle = 'rgba(' + col + ',0.24)'; c.fill();
-  c.lineWidth = 4 * dpr; c.strokeStyle = 'rgb(' + col + ')'; c.stroke();
+  c.fillStyle = 'rgba(' + col + ',' + (steady ? 0.28 : 0.12) + ')'; c.fill();
+  c.lineWidth = 3 * dpr; c.strokeStyle = 'rgb(' + col + ')'; c.stroke();
+  P.forEach(function (p) { c.beginPath(); c.arc(p.x, p.y, 7 * dpr, 0, Math.PI * 2); c.fillStyle = 'rgb(' + col + ')'; c.fill(); });
 }
 
 function takeShot() {
@@ -727,7 +989,7 @@ function takeShot() {
   // 화면이 멈추지 않게 잠깐 뒤에 처리. 사진 기능(아이폰 iOS 18.4~)이 되면 영상 대신 고화질 사진을 씀
   setTimeout(function () {
     grabStill(c).then(processShot).then(function (r) {
-      var it = addItem(r, takenAt);
+      var it = addItem(r, takenAt); camItems.push(it);
       $('last').src = it.url; $('last').hidden = false;
       if (setting('instant')) enqueue([it]);
     }).catch(function (e) { console.error(e); })
@@ -737,14 +999,17 @@ function takeShot() {
 
 function showHint() {
   var main;
-  if (!autoOn) main = '셔터를 누를 때마다 한 장씩 찍힙니다. 다 찍으면 ‘완료’.';
-  else if (shots > 0 && shot.state === 'WAIT_NEXT') main = '찍었습니다 (' + shots + '장). 다음 문서로 바꿔 주세요.';
-  else if (shot.state === 'HOLDING' && lastQuad) main = '문서를 찾았습니다. 그대로 잠깐 들고 계세요…';
-  else main = '종이 네 귀퉁이와 바깥 바닥이 조금 보이게 비춰 주세요. 파란 테두리가 잡히면 저절로 찍습니다.';
-  $('hint').textContent = main + '\n[' + diag + ']';
-  $('auto').textContent = autoOn ? '자동: 켬' : '자동: 끔';
+  if (!autoOn) main = '셔터를 누를 때마다 한 장씩 찍힙니다';
+  else if (shots > 0 && shot.state === 'WAIT_NEXT') main = shots + '장 찍음 · 다음 문서로 바꿔 주세요';
+  else if (shot.state === 'HOLDING' && lastQuad) main = '그대로 잠깐 들고 계세요…';
+  else main = '종이 네 귀퉁이 바깥이 조금 보이게 비춰 주세요';
+  $('hint').textContent = main; $('diag').textContent = diag;
+  $('auto').textContent = autoOn ? '자동 촬영' : '수동 촬영'; $('auto').className = 'pill' + (autoOn ? ' on' : '');
 }
-function showCount() { $('count').textContent = busy > 0 ? shots + '장 (처리 중)' : shots + '장'; }
+function showCount() {
+  $('count').textContent = shots; $('count').hidden = !shots;
+  $('shutter').className = busy > 0 ? 'busy' : '';
+}
 
 // 시험용 가짜 카메라: test.jpg 를 흔들며 보여줌
 function testStream() {
@@ -769,7 +1034,7 @@ function setupTrack(tr) {
   camTrack = tr; lastStill = '';
   var caps = {};
   try { caps = tr.getCapabilities ? tr.getCapabilities() : {}; } catch (e) {}
-  $('torch').hidden = !caps.torch; $('torch').textContent = '플래시';
+  $('torch').hidden = !caps.torch; $('torchgap').hidden = !!caps.torch; $('torch').className = 'cbtn';
   // 고화질 사진 촬영 (아이폰 iOS 18.4~, 안드로이드 크롬). 안 되면 지금처럼 영상 화면을 씀
   try { stillCap = (!TEST && window.ImageCapture) ? new ImageCapture(tr) : null; } catch (e) { stillCap = null; }
   tr.addEventListener('ended', function () { diag = '카메라가 끊겼습니다. ‘완료’ 후 다시 시작해 주세요'; showHint(); });
@@ -822,7 +1087,7 @@ $('torch').onclick = function () {
   var want = !torchOn;
   camTrack.applyConstraints({ advanced: [{ torch: want }] })
     .then(function () { torchOn = want; }, function () { torchOn = false; })
-    .then(function () { $('torch').textContent = torchOn ? '플래시 끔' : '플래시'; });
+    .then(function () { $('torch').className = 'cbtn' + (torchOn ? ' on' : ''); });
 };
 
 // 화면 꺼짐 방지: 촬영 중·보내는 중에는 화면이 저절로 꺼지지 않게 (아이폰 Safari 16.4~, 홈 화면 앱 18.4~)
@@ -872,19 +1137,35 @@ function thump(t, dur, f0, f1, vol) {
 }
 
 $('start').onclick = function () { unlockAudio(); openCamera(); };
-$('done').onclick = closeCamera;
+// ✓ / 마지막 사진 → 이번에 찍은 사진 편집 화면으로
+function finishCamera() {
+  var mine = camItems.filter(function (it) { return items.indexOf(it) >= 0; });
+  closeCamera();
+  var list = items.filter(sendable);
+  if (mine.length && list.length) openSlider(list, Math.max(0, list.indexOf(mine[0])));
+  else if (busy > 0) { var m = $('msg'); m.className = 'msg'; m.textContent = '찍은 사진을 정리하는 중입니다…'; }
+}
+$('done').onclick = finishCamera;
+$('lastbox').onclick = function () { if (shots) finishCamera(); };
+$('cclose').onclick = closeCamera;
 $('shutter').onclick = function () { shot.markShot(lastQuad, performance.now()); takeShot(); showHint(); };
 $('auto').onclick = function () { autoOn = !autoOn; shot.resetSteady(); showHint(); };
 document.addEventListener('visibilitychange', function () { if (document.hidden && stream) closeCamera(); });
 
 // ------------------------------------------------------------------ 설정 (이 폰에만 저장)
-var DEFAULTS = { instant: false, sound: true, enhance: true };
+var DEFAULTS = { instant: false, sound: true, filter: 'magic' };
 function setting(k) {
   try { var v = localStorage.getItem('as_' + k); if (v !== null) return v === '1'; } catch (e) {}
   return DEFAULTS[k];
 }
 function setSetting(k, on) { try { localStorage.setItem('as_' + k, on ? '1' : '0'); } catch (e) {} }
-['instant', 'sound', 'enhance'].forEach(function (k) {
+function settingStr(k) {
+  try { var v = localStorage.getItem('as_' + k); if (v && FILTERS.indexOf(v) >= 0) return v; } catch (e) {}
+  return DEFAULTS[k];
+}
+$('set_filter').value = settingStr('filter');
+$('set_filter').onchange = function () { try { localStorage.setItem('as_filter', $('set_filter').value); } catch (e) {} };
+['instant', 'sound'].forEach(function (k) {
   var el = $('set_' + k); el.checked = setting(k);
   el.onchange = function () { setSetting(k, el.checked); if (k === 'sound' && el.checked) unlockAudio(); };
 });
@@ -905,7 +1186,7 @@ function dbPut(it) {
   if (!DB) return;
   try {
     DB.transaction('items', 'readwrite').objectStore('items').put({
-      id: it.id, name: it.name, at: it.at, orig: it.orig, quad: it.quad, blob: it.blob, want: !!it.want
+      id: it.id, name: it.name, at: it.at, orig: it.orig, quad: it.quad, blob: it.blob, want: !!it.want, filter: it.filter, rot: it.rot || 0
     });
   } catch (e) { console.error(e); }
 }
@@ -925,7 +1206,7 @@ var lastId = 0;
 function newId() { lastId = Math.max(Date.now(), lastId + 1); return lastId; }
 
 function addItem(r, takenAt) {
-  var it = { id: newId(), at: takenAt, insp: inspDay, orig: r.orig, quad: r.quad, blob: r.blob, url: URL.createObjectURL(r.blob), status: 'wait', note: '', want: false };
+  var it = { id: newId(), at: takenAt, insp: inspDay, orig: r.orig, quad: r.quad, blob: r.blob, filter: r.filter, rot: r.rot || 0, url: URL.createObjectURL(r.blob), status: 'wait', note: '', want: false };
   it.name = nameFor(it);
   items.push(it); dbPut(it); render();
   return it;
@@ -964,10 +1245,11 @@ function isSending() { return items.some(busyItem); }
 
 function render() {
   var g = $('grid'); g.innerHTML = '';
-  items.forEach(function (it) {
+  items.forEach(function (it, n) {
     var d = document.createElement('div'); d.className = 'th';
     var img = document.createElement('img'); img.src = it.url; img.alt = ''; d.appendChild(img);
     img.onclick = function () { openSlider(items.slice(), items.indexOf(it)); };
+    if (!it.status || it.status === 'wait') { var no = document.createElement('div'); no.className = 'no'; no.textContent = n + 1; d.appendChild(no); }
     var dt = inspOf(it);
     if (dt) { var dl = document.createElement('div'); dl.className = 'dt'; dl.textContent = dt; d.appendChild(dl); }
     if (!busyItem(it) && it.status !== 'ok') {
@@ -984,8 +1266,11 @@ function render() {
   });
   var left = items.filter(function (it) { return it.status === 'wait' || it.status === 'bad'; }).length;
   var sending = isSending(), b = $('send');
-  b.disabled = left === 0;
-  b.textContent = left ? left + '장 모두 보내기' : sending ? '보내는 중…' : '보낼 사진 없음';
+  b.disabled = left === 0; b.className = 'dockbtn' + (left ? ' ready' : '');
+  $('sendtxt').textContent = sending ? '보내는 중…' : '보내기';
+  $('sendn').textContent = left; $('sendn').hidden = !left;
+  $('empty').hidden = items.length > 0; $('ghead').hidden = !items.length;
+  $('gcount').textContent = '사진 ' + items.length + '장' + (left ? ' · 보낼 사진 ' + left + '장' : '');
   $('clear').hidden = sending || !items.some(function (it) { return it.status !== 'ok'; });
 }
 
@@ -1048,7 +1333,7 @@ function finishBatch() {
   var b = batch; batch = null; if (!b) return;
   var m = $('msg');
   if (b.bad) { m.className = 'msg bad'; m.textContent = b.ok + '장 보냄, ' + b.bad + '장 실패. 인터넷이 되면 자동으로 다시 보냅니다(이 화면을 열어 두세요).'; }
-  else { m.className = 'msg ok'; m.textContent = b.ok + '장 전송 완료. 잠시 뒤 품번 폴더에 들어갑니다.'; setTimeout(loadRecent, 70000); }
+  else { m.className = 'msg ok'; m.textContent = b.ok + '장 전송 완료. 1~2분 뒤 검사일자 폴더에 들어갑니다.'; setTimeout(loadRecent, 70000); }
   render();
 }
 function sendAll() { enqueue(items.filter(function (it) { return it.status === 'wait' || it.status === 'bad'; })); }
@@ -1122,19 +1407,23 @@ function updateSlider() {
   if (!it) { closeView(); return; }
   $('vcount').textContent = (sl.idx + 1) + ' / ' + sl.list.length;
   var locked = busyItem(it) || it.status === 'ok';
-  $('vadj').hidden = locked; $('vdel').hidden = locked;
-  $('vnote').textContent = it.status === 'ok' ? '보낸 사진' : busyItem(it) ? '보내는 중' : it.status === 'bad' ? '보내기 실패한 사진' : '좌우로 넘겨 확인';
+  ['vadj', 'vfilt', 'vrot', 'vdel'].forEach(function (id) { $(id).disabled = locked; });
+  if (locked) $('filters').hidden = true;
+  $('vfilt').className = 'tool' + ($('filters').hidden ? '' : ' sel');
+  $('vnote').textContent = it.status === 'ok' ? '보낸 사진' : busyItem(it) ? '보내는 중' : it.status === 'bad' ? '보내기 실패한 사진' : FNAME[filterOf(it)];
   $('vprev').disabled = sl.idx === 0; $('vnext').disabled = sl.idx >= sl.list.length - 1;
   var n = sl.list.filter(sendable).length;
-  $('vsendbar').hidden = n === 0;
-  $('vsend').textContent = n + '장 모두 보내기';
+  $('vsend').hidden = n === 0;
+  $('vsend').textContent = '보내기 (' + n + ')';
+  if (!$('filters').hidden) showFilters(it);
 }
+var FNAME = { original: '원본', magic: '매직 컬러', gray: '회색조', bw: '흑백' };
 function refreshSlide(it) {
   var img = $('slides').querySelector('img[data-id="' + it.id + '"]');
   if (img) img.src = it.url;
   $('view').hidden = false; updateSlider();
 }
-function closeView() { $('view').hidden = true; $('slides').innerHTML = ''; sl.list = []; }
+function closeView() { $('view').hidden = true; $('filters').hidden = true; $('slides').innerHTML = ''; sl.list = []; }
 $('slides').addEventListener('scroll', function () {
   var box = $('slides'), w = box.clientWidth || 1, i = Math.round(box.scrollLeft / w);
   if (i !== sl.idx && i >= 0 && i < sl.list.length) { sl.idx = i; updateSlider(); }
@@ -1156,6 +1445,63 @@ $('vdel').onclick = function () {
   sl.list.splice(sl.idx, 1);
   if (!sl.list.length) { closeView(); return; }
   buildSlides(); goSlide(Math.min(sl.idx, sl.list.length - 1), true);
+};
+// ---- 필터 · 회전: 원본에서 다시 만듦
+var fthumb = { id: 0, busy: false };
+function showFilters(it) {
+  $('filters').querySelectorAll('.fl').forEach(function (b) { b.className = 'fl' + (b.dataset.f === filterOf(it) ? ' sel' : ''); });
+  if (fthumb.id === it.id || fthumb.busy || !cvReady) return;
+  fthumb.busy = true; var want = it.id;
+  blobToCanvas(it.orig).then(function (c) {
+    var d = fit(c.width, c.height, 480), sm = document.createElement('canvas'); sm.width = d.w; sm.height = d.h;
+    var g = sm.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(c, 0, 0, d.w, d.h);
+    $('filters').querySelectorAll('.fl').forEach(function (b) {
+      var out = makeDoc(sm, it.quad, b.dataset.f, it.rot), t = b.querySelector('canvas'), tg = t.getContext('2d');
+      tg.fillStyle = '#333'; tg.fillRect(0, 0, t.width, t.height);
+      var s = Math.min(t.width / out.width, t.height / out.height), w = out.width * s, h = out.height * s;
+      tg.drawImage(out, (t.width - w) / 2, (t.height - h) / 2, w, h);
+    });
+    fthumb.id = want;
+  }).catch(function (e) { console.error(e); }).finally(function () {
+    fthumb.busy = false; var cur = curIt();
+    if (cur && cur.id !== fthumb.id && !$('filters').hidden) showFilters(cur);
+  });
+}
+/** 사진 한 장을 원본에서 다시 만들기 (필터·회전·모서리가 바뀌었을 때) */
+function remake(it, patch) {
+  $('vbusy').hidden = false;
+  return new Promise(function (ok) { setTimeout(ok, 30); }).then(function () {
+    return blobToCanvas(it.orig);
+  }).then(function (c) {
+    var f = patch.filter || filterOf(it), r = patch.rot !== undefined ? patch.rot : (it.rot || 0);
+    var q = patch.quad !== undefined ? patch.quad : it.quad;
+    return renderOut(c, q, f, r).then(function (blob) {
+      URL.revokeObjectURL(it.url);
+      it.blob = blob; it.filter = f; it.rot = r; it.quad = q; it.url = URL.createObjectURL(blob);
+      if (it.status === 'bad' && it.fatal) { it.status = 'wait'; it.note = ''; }
+      if (patch.quad !== undefined || patch.rot !== undefined) fthumb.id = 0;
+      dbPut(it); render(); refreshSlide(it);
+    });
+  }).catch(function (e) { alert('다시 만들지 못했습니다: ' + e.message); })
+    .finally(function () { $('vbusy').hidden = true; });
+}
+$('vfilt').onclick = function () {
+  syncIdx(); $('filters').hidden = !$('filters').hidden; updateSlider();
+};
+$('filters').querySelectorAll('.fl').forEach(function (b) {
+  b.onclick = function () {
+    syncIdx(); var it = curIt(); if (!it || b.dataset.f === filterOf(it)) return;
+    remake(it, { filter: b.dataset.f });
+  };
+});
+$('fall').onclick = function () {
+  syncIdx(); var it = curIt(); if (!it) return;
+  var f = filterOf(it), todo = sl.list.filter(function (o) { return sendable(o) && filterOf(o) !== f; });
+  todo.reduce(function (p, o) { return p.then(function () { return remake(o, { filter: f }); }); }, Promise.resolve());
+};
+$('vrot').onclick = function () {
+  syncIdx(); var it = curIt(); if (!it) return;
+  remake(it, { rot: ((it.rot || 0) + 1) % 4 });
 };
 $('vsend').onclick = function () {
   var list = sl.list.filter(sendable);
@@ -1187,10 +1533,10 @@ function drawAdj() {
   P.forEach(function (p, i) { if (i) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y); }); g.closePath();
   g.fillStyle = 'rgba(0,0,0,.45)'; g.fill('evenodd'); g.restore();
   g.beginPath(); P.forEach(function (p, i) { if (i) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y); }); g.closePath();
-  g.lineWidth = 3 * dpr; g.strokeStyle = '#3d8bfd'; g.stroke();
+  g.lineWidth = 2.5 * dpr; g.strokeStyle = '#15a57e'; g.stroke();
   P.forEach(function (p, i) {
-    g.beginPath(); g.arc(p.x, p.y, (i === adj.drag ? 15 : 12) * dpr, 0, Math.PI * 2);
-    g.fillStyle = '#fff'; g.fill(); g.lineWidth = 3 * dpr; g.strokeStyle = '#3d8bfd'; g.stroke();
+    g.beginPath(); g.arc(p.x, p.y, (i === adj.drag ? 16 : 12) * dpr, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,.9)'; g.fill(); g.lineWidth = 3 * dpr; g.strokeStyle = '#15a57e'; g.stroke();
   });
   // 끄는 동안 손가락 밑을 확대해서 보여줌
   if (adj.drag >= 0) {
@@ -1203,7 +1549,7 @@ function drawAdj() {
     g.restore();
     g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.lineWidth = 3 * dpr; g.strokeStyle = '#fff'; g.stroke();
     g.beginPath(); g.moveTo(cx - 10 * dpr, cy); g.lineTo(cx + 10 * dpr, cy); g.moveTo(cx, cy - 10 * dpr); g.lineTo(cx, cy + 10 * dpr);
-    g.lineWidth = 2 * dpr; g.strokeStyle = '#3d8bfd'; g.stroke();
+    g.lineWidth = 2 * dpr; g.strokeStyle = '#15a57e'; g.stroke();
   }
 }
 function adjPos(e) {
@@ -1253,8 +1599,8 @@ $('aok').onclick = function () {
   if (Math.abs(area) / 2 < 0.02) { alert('네 점이 너무 붙어 있습니다. 문서 모서리에 맞춰 주세요.'); return; }
   $('aok').disabled = true; $('aok').textContent = '만드는 중…';
   setTimeout(function () {
-    renderOut(src, full ? null : q).then(function (blob) {
-      URL.revokeObjectURL(it.url);
+    renderOut(src, full ? null : q, filterOf(it), it.rot || 0).then(function (blob) {
+      URL.revokeObjectURL(it.url); fthumb.id = 0;
       it.blob = blob; it.quad = full ? null : q; it.url = URL.createObjectURL(blob);
       if (it.status === 'bad' && it.fatal) { it.status = 'wait'; it.note = ''; }
       dbPut(it); render(); closeAdjust(); refreshSlide(it);
@@ -1267,11 +1613,11 @@ dbOpen().then(dbAll).then(function (rows) {
   rows.sort(function (a, b) { return a.id - b.id; }).forEach(function (r) {
     if (!r.blob) return;
     lastId = Math.max(lastId, r.id);
-    items.push({ id: r.id, name: r.name, at: r.at, orig: r.orig || r.blob, quad: r.quad || null, blob: r.blob,
+    items.push({ id: r.id, name: r.name, at: r.at, orig: r.orig || r.blob, quad: r.quad || null, blob: r.blob, filter: r.filter, rot: r.rot || 0,
       url: URL.createObjectURL(r.blob), want: !!r.want,
       status: r.want ? 'bad' : 'wait', note: r.want ? '보내다 멈춤 — 다시 보냄' : '' });
   });
-  if (rows.length) { var m = $('msg'); m.className = 'msg'; m.textContent = '지난번에 보내지 않은 사진 ' + rows.length + '장을 불러왔습니다.'; }
+  if (rows.length) { var m = $('msg'); m.className = 'msg'; m.textContent = '지난번에 보내지 않은 사진 ' + rows.length + '장이 남아 있습니다.'; }
   render(); retryFailed();
 });
 try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
