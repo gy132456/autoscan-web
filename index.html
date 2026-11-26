@@ -28,6 +28,12 @@
   .dpick input { position:absolute; inset:0; width:100%; height:100%; opacity:0; border:0; margin:0; padding:0; cursor:pointer; -webkit-appearance:none; appearance:none; }
   .brand .logo { width:30px; height:30px; border-radius:8px; background:#fff; color:var(--pri); display:flex; align-items:center; justify-content:center; }
   .brand .logo svg { width:20px; height:20px; }
+  /* 이름 아래 버전 표시: 최신이면 흰 바탕 초록 글씨, 새 버전이 있으면 주황 (누르면 새로고침) — 앱 첫 화면과 같음 */
+  .brand .bname { display:flex; flex-direction:column; line-height:1.1; }
+  #ver { align-self:flex-start; margin-top:3px; padding:2px 8px; border-radius:10px; font-size:11.5px; font-weight:700; letter-spacing:0;
+         background:rgba(255,255,255,.18); color:#fff; border:0; min-height:0; cursor:default; }
+  #ver.ok { background:#fff; color:var(--pri2); }
+  #ver.old { background:var(--warn); color:#fff; cursor:pointer; }
   #hdate { flex-direction:column; align-items:flex-end; gap:0; padding:4px 12px; min-height:44px; border-radius:22px; background:rgba(255,255,255,.18); color:#fff; font-size:15px; font-weight:700; }
   #hdate small { font-size:11px; font-weight:600; opacity:.85; }
   #hdate.other { background:var(--warn); }
@@ -161,7 +167,7 @@
 </head>
 <body>
 <header class="appbar">
-  <div class="brand"><span class="logo"><svg class="i" viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M8 9h8M8 12h8M8 15h5"/></svg></span>자동스캔</div>
+  <div class="brand"><span class="logo"><svg class="i" viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M8 9h8M8 12h8M8 15h5"/></svg></span><span class="bname">자동스캔<button id="ver" type="button" aria-live="polite"></button></span></div>
   <label id="hdate" class="dpick"><span>검사일자 <b id="hdtxt"></b></span><small id="hdnote"></small><input type="date" id="insp" aria-label="검사일자"></label>
 </header>
 <main id="home">
@@ -405,6 +411,30 @@ var PARALLEL = 6, LONG_SIDE = 4096, QUALITY = 0.95, ORIG_SIDE = 3000, ORIG_QUALI
 var A4_W = 2100, A4_H = 2970, DETECT_WORK = 1280; // 결과: A4 254dpi (음영완화 v2 승인 기준 크기)
 
 function $(id) { return document.getElementById(id); }
+
+// ------------------------------------------------------------------ 버전 표시 (안드로이드 앱과 번호를 같이 올림)
+var WEB_VER = '0.26';
+var verLatest = null, verCheckedAt = 0;
+function showVer(state) {
+  var b = $('ver'); if (!b) return;
+  if (state === 'ok') { b.className = 'ok'; b.textContent = 'v' + WEB_VER + ' · 최신 ✓'; }
+  else if (state === 'old') { b.className = 'old'; b.textContent = '새 버전 v' + verLatest + ' ↻'; }
+  else if (state === 'fail') { b.className = ''; b.textContent = 'v' + WEB_VER + ' · 확인 못 함'; }
+  else { b.className = ''; b.textContent = 'v' + WEB_VER + ' · 확인 중…'; }
+}
+function verNum(v) { var p = String(v).split('.'); return Number(p[0] || 0) * 1000 + Number(p[1] || 0); }
+/** 서버(깃허브)에 올라간 최신 페이지의 WEB_VER 와 비교 */
+function checkVer() {
+  if (Date.now() - verCheckedAt < 60 * 1000) return;
+  verCheckedAt = Date.now();
+  if (verLatest === null) showVer('');
+  fetch(location.pathname + '?vc=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
+    var m = t.match(/var WEB_VER = '([0-9.]+)'/);
+    if (!m) { showVer('fail'); return; }
+    verLatest = m[1];
+    showVer(verNum(verLatest) > verNum(WEB_VER) ? 'old' : 'ok');
+  }).catch(function () { showVer('fail'); });
+}
 function pad(n) { return (n < 10 ? '0' : '') + n; }
 // 검사일자: 오늘(기본)이면 서버가 성적서의 검사일자를 읽어 씀(확실할 때만). 오늘이 아닌 날을 고르면 그 날짜가 우선. 열 때마다 오늘로 시작
 function ymd(t) { return t.getFullYear() + '-' + pad(t.getMonth() + 1) + '-' + pad(t.getDate()); }
@@ -1650,6 +1680,13 @@ function retryFailed() {
 window.addEventListener('online', retryFailed);
 setInterval(retryFailed, 30000);
 document.addEventListener('visibilitychange', function () { if (!document.hidden) retryFailed(); });
+// 버전: 열 때와 다시 볼 때 확인. 새 버전이면 누르면 바로 새로고침 (주소의 # 뒤 접속 키는 그대로)
+$('ver').onclick = function () {
+  if ($('ver').className === 'old') location.replace(location.pathname + '?r=' + Date.now() + location.hash);
+  else { verCheckedAt = 0; checkVer(); }
+};
+document.addEventListener('visibilitychange', function () { if (!document.hidden) checkVer(); });
+checkVer();
 
 function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 /** 저장된 사진을 서버가 지금 바로 분류하게 따로 요청 (답은 기다리지 않음. 화면을 닫아도 요청은 끝까지 감) */
