@@ -413,7 +413,7 @@ var A4_W = 2100, A4_H = 2970, DETECT_WORK = 1280; // 결과: A4 254dpi (음영�
 function $(id) { return document.getElementById(id); }
 
 // ------------------------------------------------------------------ 버전 표시 (안드로이드 앱과 번호를 같이 올림)
-var WEB_VER = '0.27';
+var WEB_VER = '0.28';
 var verLatest = null, verCheckedAt = 0;
 function showVer(state) {
   var b = $('ver'); if (!b) return;
@@ -1656,7 +1656,7 @@ function sendOne(it) {
   return blobToPdf(it.blob).then(b64)
     .then(function (data) { return post({ token: KEY, name: it.name.replace(/\.(jpe?g|png)$/i, '.pdf'), data: data, later: true }); })
     .then(function (r) {
-      if (r && r.ok && !r.duplicate) processNow(r.saved || it.name.replace(/\.(jpe?g|png)$/i, '.pdf'));
+      if (r && r.ok && !r.duplicate) processNow(r.saved || it.name.replace(/\.(jpe?g|png)$/i, '.pdf'), r.id);
       if (r && r.ok) { it.status = 'ok'; it.note = r.duplicate ? '이미 받음' : ''; dbDel(it.id); batch.ok++; }
       else { it.status = 'bad'; it.fatal = true; it.note = '실패: ' + ((r && r.error) || '알 수 없음'); batch.bad++; dbPut(it); }
     })
@@ -1690,9 +1690,10 @@ checkVer();
 
 function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 /** 저장된 사진을 서버가 지금 바로 분류하게 따로 요청 (답은 기다리지 않음. 화면을 닫아도 요청은 끝까지 감) */
-function processNow(name) {
+function processNow(name, id) {
   try {
-    fetch(API, { method: 'POST', keepalive: true, body: JSON.stringify({ token: KEY, action: 'process', name: name }),
+    // id = 받을 때 서버가 돌려준 파일 번호 (드라이브 이름 검색이 몇 초 늦게 잡혀도 바로 찾음)
+    fetch(API, { method: 'POST', keepalive: true, body: JSON.stringify({ token: KEY, action: 'process', name: name, id: id || '' }),
                  headers: { 'Content-Type': 'text/plain;charset=utf-8' } }).catch(function () {});
   } catch (e) {}
 }
