@@ -1279,14 +1279,14 @@ function takeShot() {
   }, 30);
 }
 
-// 찍은 사진의 보정 결과를 화면 가운데에 1.5초 보여 준 뒤 썸네일 쪽으로 줄어들며 사라짐 (누르면 바로 닫힘)
+// 찍은 사진의 보정 결과를 화면 가운데에 0.7초 보여 준 뒤 썸네일 쪽으로 줄어들며 사라짐 (누르면 바로 닫힘)
 var popT1 = 0, popT2 = 0;
 function showPop(url) {
   var p = $('pop'), t = $('poptag');
   clearTimeout(popT1); clearTimeout(popT2);
   p.className = ''; p.onload = function () {
     p.className = 'on'; t.className = 'on';
-    popT1 = setTimeout(hidePop, 1500);
+    popT1 = setTimeout(hidePop, 700);
   };
   p.src = url;
 }
