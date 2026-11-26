@@ -109,6 +109,14 @@
   #count { position:absolute; top:-9px; right:-9px; min-width:22px; height:22px; padding:0 6px; border-radius:11px; background:var(--pri); color:#fff; font-size:12px; font-weight:700; line-height:22px; }
   #lastbox { overflow:visible; }
   #lastbox img { border-radius:4px; }
+  /* 찍자마자 보정된 사진을 크게 잠깐 보여 줌 → 왼쪽 아래 썸네일로 줄어듦 */
+  #pop { position:absolute; left:50%; top:50%; max-width:76%; max-height:78%; transform:translate(-50%,-50%); border:3px solid #fff; border-radius:6px;
+         box-shadow:0 6px 28px rgba(0,0,0,.55); background:#fff; opacity:0; pointer-events:none; transition:transform .35s ease-in, opacity .35s ease-in; z-index:5; }
+  #pop.on { opacity:1; pointer-events:auto; transition:opacity .12s; }
+  #pop.on.away { opacity:0; transform:translate(-120%,60%) scale(.15); pointer-events:none; transition:transform .35s ease-in, opacity .35s ease-in; }
+  #poptag { position:absolute; left:50%; bottom:14px; transform:translateX(-50%); background:rgba(21,165,126,.95); color:#fff; font-weight:700; font-size:14px;
+            padding:6px 14px; border-radius:16px; opacity:0; transition:opacity .2s; pointer-events:none; z-index:6; }
+  #poptag.on { opacity:1; }
   #shutter { justify-self:center; width:78px; height:78px; padding:0; border-radius:50%; background:#fff; box-shadow:0 0 0 4px #000, 0 0 0 8px #fff; }
   #shutter:active { transform:scale(.92); background:#dfe3e6; }
   #shutter.busy { background:#cfd5d9; }
@@ -219,6 +227,8 @@
     <video id="video" playsinline muted autoplay></video>
     <canvas id="ov"></canvas>
     <div id="flash"></div>
+    <img id="pop" alt="보정된 사진">
+    <div id="poptag">보정 완료</div>
     <div id="hint"></div>
     <div id="diag"></div>
     <label id="cdate" class="dpick"><span id="cdtxt"></span><input type="date" id="insp2" aria-label="검사일자"></label>
@@ -1173,7 +1183,7 @@ var small = document.createElement('canvas');
 
 function openCamera() {
   $('cam').hidden = false; $('home').hidden = true;
-  shots = 0; camItems = []; shot = new AutoShot(); lastQuad = null; $('last').hidden = true; showCount(); showHint();
+  shots = 0; camItems = []; shot = new AutoShot(); lastQuad = null; $('last').hidden = true; $('pop').className = ''; $('poptag').className = ''; showCount(); showHint();
   var p = TEST ? testStream() : navigator.mediaDevices.getUserMedia({
     audio: false,
     video: { facingMode: { ideal: 'environment' }, width: { ideal: 4032 }, height: { ideal: 3024 } }
@@ -1262,11 +1272,32 @@ function takeShot() {
     grabStill(c).then(function (cc) { return processShot(cc, hint); }).then(function (r) {
       var it = addItem(r, takenAt); camItems.push(it);
       $('last').src = it.url; $('last').hidden = false;
+      showPop(it.url);
       if (setting('instant')) enqueue([it]);
     }).catch(function (e) { console.error(e); })
       .finally(function () { busy--; showCount(); });
   }, 30);
 }
+
+// 찍은 사진의 보정 결과를 화면 가운데에 1.5초 보여 준 뒤 썸네일 쪽으로 줄어들며 사라짐 (누르면 바로 닫힘)
+var popT1 = 0, popT2 = 0;
+function showPop(url) {
+  var p = $('pop'), t = $('poptag');
+  clearTimeout(popT1); clearTimeout(popT2);
+  p.className = ''; p.onload = function () {
+    p.className = 'on'; t.className = 'on';
+    popT1 = setTimeout(hidePop, 1500);
+  };
+  p.src = url;
+}
+function hidePop() {
+  var p = $('pop'), t = $('poptag');
+  clearTimeout(popT1); t.className = '';
+  if (p.className !== 'on') return;
+  p.className = 'on away';
+  popT2 = setTimeout(function () { p.className = ''; }, 380);
+}
+$('pop').onclick = hidePop;
 
 function showHint() {
   var main;
