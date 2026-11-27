@@ -413,7 +413,7 @@ var A4_W = 2100, A4_H = 2970, DETECT_WORK = 1280; // 결과: A4 254dpi (음영�
 function $(id) { return document.getElementById(id); }
 
 // ------------------------------------------------------------------ 버전 표시 (안드로이드 앱과 번호를 같이 올림)
-var WEB_VER = '0.28';
+var WEB_VER = '0.29';
 var verLatest = null, verCheckedAt = 0;
 function showVer(state) {
   var b = $('ver'); if (!b) return;
@@ -791,6 +791,14 @@ function warp(img, q) {
   return out;
 }
 
+/** 찾은 네 모서리가 종이 모양인지: 마주 보는 변 평균의 긴 쪽/짧은 쪽이 1.8 이하 (A4 는 1.41).
+ *  가까이 찍어 종이 끝이 화면 밖이면 표 안의 가로 띠(3:1 등)를 종이로 잘못 잡는 일이 있어 그런 건 버리고 사진 전체를 씀.
+ *  q = 픽셀 좌표, 왼쪽 위부터 시계 방향 (안드로이드 DocProcessor.shapeOk 와 같음) */
+function docShapeOk(q) {
+  function d(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+  var w = (d(q[0], q[1]) + d(q[3], q[2])) / 2, h = (d(q[0], q[3]) + d(q[1], q[2])) / 2;
+  return Math.max(w, h) / Math.max(1, Math.min(w, h)) <= 1.8;
+}
 function detectQuad(canvas) {
   if (!cvReady) return null;
   // 큰 사진을 통째로 읽지 않고 DETECT_WORK 로 줄인 뒤 찾음 (종이 끝과 표 선을 구분할 만큼 크게)
@@ -803,8 +811,10 @@ function detectQuad(canvas) {
   var src = cv.imread(sm), q = null;
   try {
     q = findDoc(src, DETECT_WORK);
+    if (q && !docShapeOk(q)) q = null; // 가까이 찍어 종이 끝이 안 보일 때 표 안의 가로 띠를 종이로 착각한 것 → 버림
     // 못 찾으면 미리보기와 같은 크기(640)로 한 번 더 (큰 사진에서는 책상 결·빛 반사 때문에 놓칠 때가 있음)
     if (!q) q = findDoc(src, 640);
+    if (q && !docShapeOk(q)) q = null;
   } catch (e) { console.error(e); } finally { src.delete(); }
   return q ? q.map(function (p) { return { x: p.x / sm.width, y: p.y / sm.height }; }) : null;
 }
@@ -1074,7 +1084,8 @@ function processShot(canvas, hint) {
     var q = null;
     try { q = detectQuad(canvas); } catch (e) { console.error(e); }
     // 그래도 못 찾으면 찍는 순간 미리보기에서 잡혀 있던 테두리를 씀 (사진과 화면 비율이 같을 때만)
-    if (!q && hint && Math.abs(hint.aspect - canvas.width / canvas.height) < 0.02) q = hint.q;
+    if (!q && hint && Math.abs(hint.aspect - canvas.width / canvas.height) < 0.02 &&
+        docShapeOk(hint.q.map(function (p) { return { x: p.x * canvas.width, y: p.y * canvas.height }; }))) q = hint.q;
     var mode = settingStr('filter');
     return Promise.all([origBlob(canvas), renderOut(canvas, q, mode, 0)]).then(function (r) {
       return { orig: r[0], quad: q, blob: r[1], filter: mode, rot: 0 };
